@@ -270,9 +270,10 @@ export const CesiumMoonGlobe = forwardRef<CesiumMoonGlobeRef, CesiumMoonGlobePro
       viewer.scene.moon.show = false;
     }
 
-    // Solar lighting
+    // Disable Cesium default Earth-centric sun graphic (we are on the Moon;
+    // scientifically accurate topocentric Sun is rendered via lunar ephemeris)
     if (viewer.scene.sun) {
-      viewer.scene.sun.show = true;
+      viewer.scene.sun.show = false;
     }
     viewer.scene.globe.enableLighting = false;
 
@@ -1556,6 +1557,12 @@ export const CesiumMoonGlobe = forwardRef<CesiumMoonGlobeRef, CesiumMoonGlobePro
     const Cesium = (window as any).Cesium;
     clearCelestialMarkers();
 
+    // Ensure Cesium default Earth-centric sun graphic is strictly hidden so
+    // only the single, astronomically accurate lunar ephemeris Sun is displayed.
+    if (viewer.scene.sun) {
+      viewer.scene.sun.show = false;
+    }
+
     const sitePos = Cesium.Cartesian3.fromDegrees(siteLng, siteLat, 15.0, ellipsoid);
     const enuTransform = Cesium.Transforms.eastNorthUpToFixedFrame(sitePos, ellipsoid);
 
@@ -1616,9 +1623,10 @@ export const CesiumMoonGlobe = forwardRef<CesiumMoonGlobeRef, CesiumMoonGlobePro
         disableDepthTestDistance: Number.POSITIVE_INFINITY
       }
     });
+    earthEntity._cartesianPos = earthWorldPos;
     celestialEntitiesRef.current.push(earthEntity);
 
-    // 3. Sun Celestial Marker
+    // 3. Sun Celestial Marker (Sole authentic solar body in the lunar sky)
     const sunDist = 2000000.0;
     const sunAltRad = sunAlt * (Math.PI / 180);
     const sunAzRad = sunAz * (Math.PI / 180);
@@ -1632,24 +1640,25 @@ export const CesiumMoonGlobe = forwardRef<CesiumMoonGlobeRef, CesiumMoonGlobePro
     const sunEntity = viewer.entities.add({
       position: sunWorldPos,
       point: {
-        pixelSize: 24,
-        color: Cesium.Color.fromCssColorString('#fbbf24'),
-        outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 2,
+        pixelSize: 28,
+        color: Cesium.Color.fromCssColorString('#fffbeb'),
+        outlineColor: Cesium.Color.fromCssColorString('#f59e0b'),
+        outlineWidth: 4,
         disableDepthTestDistance: Number.POSITIVE_INFINITY
       },
       label: {
         text: `SUN (Elev: ${sunAlt >= 0 ? '+' : ''}${sunAlt.toFixed(1)}°, Az: ${sunAz.toFixed(1)}°)`,
         font: 'bold 12px JetBrains Mono, monospace',
-        fillColor: Cesium.Color.fromCssColorString('#fde68a'),
+        fillColor: Cesium.Color.fromCssColorString('#fef08a'),
         outlineColor: Cesium.Color.BLACK,
         outlineWidth: 3,
         style: Cesium.LabelStyle.FILL_AND_OUTLINE,
         verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-        pixelOffset: new Cesium.Cartesian2(0, -14),
+        pixelOffset: new Cesium.Cartesian2(0, -16),
         disableDepthTestDistance: Number.POSITIVE_INFINITY
       }
     });
+    sunEntity._cartesianPos = sunWorldPos;
     celestialEntitiesRef.current.push(sunEntity);
   }, [clearCelestialMarkers]);
 
