@@ -56,15 +56,15 @@ export const InteractiveMoonPreview: React.FC<InteractiveMoonPreviewProps> = ({
                 <span>Natural Mosaic (LROC WAC)</span>
               </button>
               <button
-                onClick={() => setBasemap('topographic')}
+                onClick={() => setBasemap('shaded-relief')}
                 className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-                  basemap === 'topographic'
-                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/50 font-bold shadow-sm'
+                  basemap === 'shaded-relief'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 font-bold shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                <Layers className="w-3.5 h-3.5 text-purple-400" />
-                <span>LOLA Elevation Topography</span>
+                <Layers className="w-3.5 h-3.5 text-amber-400" />
+                <span>LOLA Shaded Relief</span>
               </button>
             </div>
 

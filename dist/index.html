@@ -9,11 +9,27 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="/assets/index-Dl6Kgp4Q.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/three-DEsmVymd.js">
-    <link rel="modulepreload" crossorigin href="/assets/react-three-B9ph_DSS.js">
-    <link rel="modulepreload" crossorigin href="/assets/vendor-CGPeehQx.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-BhQi8Gsf.css">
+    
+    <!-- CesiumJS for LROC QuickMap style high-resolution Moon globe and 3D flyovers -->
+    <script>
+      // Transparent blob worker shim to allow cross-origin web workers without SecurityError
+      const OriginalWorker = window.Worker;
+      window.Worker = function(url, options) {
+        if (typeof url === 'string' && url.startsWith('http') && !url.startsWith(window.location.origin)) {
+          const blob = new Blob(['importScripts(' + JSON.stringify(url) + ');'], { type: 'application/javascript' });
+          return new OriginalWorker(URL.createObjectURL(blob), options);
+        }
+        return new OriginalWorker(url, options);
+      };
+      window.CESIUM_BASE_URL = 'https://unpkg.com/cesium@1.121.0/Build/Cesium/';
+    </script>
+    <link rel="stylesheet" href="https://unpkg.com/cesium@1.121.0/Build/Cesium/Widgets/widgets.css" />
+    <script src="https://unpkg.com/cesium@1.121.0/Build/Cesium/Cesium.js"></script>
+    <script type="module" crossorigin src="./assets/index-Dkef8VpR.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/three-DcOlGrDj.js">
+    <link rel="modulepreload" crossorigin href="./assets/react-vendor-9oUC00n8.js">
+    <link rel="modulepreload" crossorigin href="./assets/icons-C7x198AR.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-CLeu_Gx5.css">
   </head>
   <body class="w-full h-full m-0 p-0 bg-black text-slate-100 overflow-hidden select-none">
     <div id="root" class="w-full h-full m-0 p-0 overflow-hidden"></div>

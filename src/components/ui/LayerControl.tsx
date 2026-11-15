@@ -11,7 +11,8 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronLeft,
-  Sparkles
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { BasemapType, ElevationCategory } from '../../types/lunar';
 import { LUNAR_BASEMAP_LAYERS } from '../../data/lunarPOIs';
@@ -75,6 +76,8 @@ interface LayerControlProps {
   onToggleAutoRotate: () => void;
   enableSunShade: boolean;
   onToggleSunShade: () => void;
+  isLoadingTiles?: boolean;
+  tileProgress?: { loaded: number; total: number } | null;
   isBumpActive?: boolean;
   onToggleBump?: () => void;
   onCollapseToSide?: () => void;
@@ -98,11 +101,13 @@ export const LayerControl: React.FC<LayerControlProps> = ({
   onToggleAutoRotate,
   enableSunShade,
   onToggleSunShade,
+  isLoadingTiles = false,
+  tileProgress = null,
   isBumpActive = true,
   onToggleBump,
   onCollapseToSide
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const trackRef = useRef<HTMLDivElement>(null);
   const [isPointerDown, setIsPointerDown] = useState(false);
   const [hoverRatio, setHoverRatio] = useState<number | null>(null);
@@ -129,8 +134,8 @@ export const LayerControl: React.FC<LayerControlProps> = ({
     switch (id) {
       case 'natural':
         return <Eye className="w-4 h-4 text-slate-300" />;
-      case 'topographic':
-        return <Mountain className="w-4 h-4 text-emerald-400" />;
+      case 'nasa-lola':
+        return <Mountain className="w-4 h-4 text-cyan-400" />;
       case 'shaded-relief':
         return <MapIcon className="w-4 h-4 text-amber-400" />;
     }
@@ -138,39 +143,27 @@ export const LayerControl: React.FC<LayerControlProps> = ({
 
   return (
     <div className={className || "w-full pointer-events-auto"}>
-      <div className="rounded-2xl bg-space-900/90 border border-slate-800/90 backdrop-blur-xl shadow-2xl overflow-hidden transition-all duration-300">
+      <div className="rounded-2xl bg-[#0B0F19]/95 border border-[#1E293B] hover:border-cyan-500/50 backdrop-blur-xl shadow-2xl overflow-hidden transition-all duration-300">
         {/* Panel Header */}
         <div
           onClick={() => setIsExpanded(!isExpanded)}
-          className="p-3.5 flex items-center justify-between cursor-pointer border-b border-slate-800/60 hover:bg-slate-800/30 transition-colors"
+          className={`p-2.5 sm:p-3 flex items-center justify-between cursor-pointer hover:bg-slate-800/30 transition-colors select-none ${isExpanded ? 'border-b border-slate-800/60' : ''
+            }`}
         >
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-cyan-950/80 border border-cyan-700/50 text-cyan-400">
+            <div className="w-9 h-9 rounded-xl bg-[#083344] border border-[#06B6D4]/60 text-[#06B6D4] flex items-center justify-center shrink-0 shadow-md shadow-cyan-950/40">
               <Layers className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-slate-200">
+              <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-white">
                 Basemap & Overlays
               </h3>
-              <p className="text-[10px] text-slate-400">
-                {LUNAR_BASEMAP_LAYERS.find(b => b.id === activeBasemap)?.shortName}
+              <p className="text-[10px] text-slate-400 font-sans">
+                Visual Mosaic
               </p>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            {onCollapseToSide && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCollapseToSide();
-                }}
-                className="p-1.5 rounded-lg bg-space-950/70 hover:bg-cyan-950/80 text-cyan-400 hover:text-white border border-slate-800 hover:border-cyan-500/50 transition-all flex items-center justify-center"
-                title="Hide left toolbar to side (or press '[')"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-            )}
             <button className="text-slate-400 hover:text-white p-1">
               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
@@ -192,8 +185,8 @@ export const LayerControl: React.FC<LayerControlProps> = ({
                       key={layer.id}
                       onClick={() => onBasemapChange(layer.id)}
                       className={`w-full text-left p-2.5 rounded-xl border transition-all duration-200 flex items-start gap-2.5 ${isActive
-                          ? 'bg-cyan-950/40 border-cyan-500/60 shadow-md shadow-cyan-950/50 text-white'
-                          : 'bg-space-950/50 border-slate-800 hover:border-slate-700 text-slate-300 hover:bg-space-950/80'
+                        ? 'bg-cyan-950/40 border-cyan-500/60 shadow-md shadow-cyan-950/50 text-white'
+                        : 'bg-space-950/50 border-slate-800 hover:border-slate-700 text-slate-300 hover:bg-space-950/80'
                         }`}
                     >
                       <div className="mt-0.5">{getBasemapIcon(layer.id)}</div>
@@ -215,146 +208,39 @@ export const LayerControl: React.FC<LayerControlProps> = ({
                   );
                 })}
               </div>
-            </div>
 
-            {/* LOLA Elevation Ramp: Continuous Color Filter with Cursor Scrubbing */}
-            {activeBasemap === 'topographic' && (
-              <div className="p-3 rounded-xl bg-space-950/85 border border-slate-800/90 space-y-2.5 animate-fadeIn">
-                {/* Status Header: Color swatch, Elevation Readout & Show All Button */}
-                <div className="flex items-center justify-between text-[10px] font-mono">
-                  {isFilterActive ? (
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className="w-3 h-3 rounded-full shrink-0 border border-white/80 shadow-sm"
-                        style={{ backgroundColor: activeHex }}
-                      />
-                      <div className="truncate font-bold text-slate-100 flex items-center gap-1.5">
-                        <span className="text-cyan-300">
-                          {activeElevation > 0 ? `+${activeElevation.toLocaleString()}` : activeElevation.toLocaleString()} m
-                        </span>
-                        <span className="text-slate-400 font-normal text-[9px] truncate">
-                          ({getGeomorphicLabel(activeElevation)})
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
+              {/* NASA LOLA Moon Trek Color Legend */}
+              {activeBasemap === 'nasa-lola' && (
+                <div className="mt-2.5 p-3 rounded-xl bg-space-950/85 border border-cyan-800/60 space-y-2 animate-fadeIn">
+                  <div className="flex items-center justify-between text-[10px] font-mono">
                     <div className="flex items-center gap-1.5 text-slate-300">
                       <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                      <span className="font-bold text-slate-200">Full Elevation Spectrum</span>
+                      <span className="font-bold text-slate-200">NASA LOLA Elevation (Moon Trek)</span>
                     </div>
-                  )}
-
-                  {isFilterActive ? (
-                    <button
-                      type="button"
-                      onClick={() => onContinuousElevationChange?.(null)}
-                      className="text-[9px] text-cyan-400 hover:text-cyan-200 underline font-bold shrink-0 ml-2 cursor-pointer"
-                      title="Clear cursor filter and view all elevations on Moon"
-                    >
-                      Show All
-                    </button>
-                  ) : (
-                    <span className="text-[9px] text-slate-400 italic shrink-0">
-                      Move cursor on bar to filter
-                    </span>
-                  )}
-                </div>
-
-                {/* Continuous Seamless Color Filter Track */}
-                <div className="relative pt-1 pb-1">
-                  <div
-                    ref={trackRef}
-                    onPointerDown={(e) => {
-                      e.currentTarget.setPointerCapture(e.pointerId);
-                      setIsPointerDown(true);
-                      updateElevationFromClientX(e.clientX);
-                    }}
-                    onPointerMove={(e) => {
-                      if (!trackRef.current) return;
-                      const rect = trackRef.current.getBoundingClientRect();
-                      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                      setHoverRatio(ratio);
-                      updateElevationFromClientX(e.clientX);
-                    }}
-                    onPointerUp={(e) => {
-                      try {
-                        e.currentTarget.releasePointerCapture(e.pointerId);
-                      } catch {}
-                      setIsPointerDown(false);
-                    }}
-                    onPointerLeave={() => {
-                      setHoverRatio(null);
-                    }}
-                    className="relative h-7 w-full rounded-xl cursor-ew-resize select-none overflow-visible shadow-lg border border-slate-700/90 group transition-all"
-                    style={{
-                      background: 'linear-gradient(to right, #2e0554 0%, #0a84e3 16%, #00cfc9 31%, #6bb04d 46%, #f2c410 58%, #e84d3d 78%, #ffffff 100%)'
-                    }}
-                    title="Move cursor or drag across the continuous spectrum to change elevation & color on Moon"
-                  >
-                    {/* Mean Datum (0m) Reference Marker */}
-                    <div
-                      className="absolute top-0 bottom-0 left-[46%] w-[1px] bg-white/40 pointer-events-none z-10"
-                      title="Mean Lunar Datum (0 m)"
-                    />
-
-                    {/* Interactive Cursor Indicator Thumb */}
-                    {isFilterActive && (
-                      <div
-                        className="absolute top-0 bottom-0 pointer-events-none transform -translate-x-1/2 flex flex-col items-center justify-between z-20 transition-[left] duration-75"
-                        style={{ left: `${activePercent}%` }}
-                      >
-                        {/* Top indicator handle */}
-                        <div
-                          className="w-3 h-3 rotate-45 border-2 border-white shadow-[0_0_8px_rgba(255,255,255,0.8)] -mt-1.5 transition-transform group-hover:scale-125"
-                          style={{ backgroundColor: activeHex }}
-                        />
-
-                        {/* Center vertical scanline */}
-                        <div className="w-[2px] h-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.9)]" />
-
-                        {/* Bottom indicator handle */}
-                        <div
-                          className="w-3 h-3 rotate-45 border-2 border-white shadow-[0_0_8px_rgba(255,255,255,0.8)] -mb-1.5 transition-transform group-hover:scale-125"
-                          style={{ backgroundColor: activeHex }}
-                        />
-                      </div>
+                    {isLoadingTiles && tileProgress ? (
+                      <span className="text-[9px] text-amber-400 font-mono flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        {tileProgress.loaded}/{tileProgress.total} tiles
+                      </span>
+                    ) : (
+                      <span className="text-[9px] text-cyan-400 font-mono">128 PPD WMTS</span>
                     )}
                   </div>
-                </div>
-
-                {/* Scale Axis Labels */}
-                <div className="flex items-center justify-between text-[9px] font-mono text-slate-400">
-                  <span className="text-purple-300">-9,000 m (Basins)</span>
-                  <span className="text-emerald-300">Datum (0 m)</span>
-                  <span className="text-amber-300">+10,760 m (Highlands)</span>
-                </div>
-
-                {/* Subtle Band-width adjustment */}
-                <div className="flex items-center justify-between pt-1 border-t border-slate-800/60 text-[9px] font-mono text-slate-400">
-                  <span>Filter Band Width</span>
-                  <div className="flex items-center gap-1">
-                    {[
-                      { label: '±1.0 km', val: 1000 },
-                      { label: '±1.8 km', val: 1800 },
-                      { label: '±3.0 km', val: 3000 }
-                    ].map(b => (
-                      <button
-                        key={b.val}
-                        type="button"
-                        onClick={() => onContinuousWindowChange?.(b.val)}
-                        className={`px-1.5 py-0.5 rounded transition-all cursor-pointer ${
-                          (continuousWindowM || 1800) === b.val
-                            ? 'bg-cyan-950 border border-cyan-500/80 text-cyan-300 font-bold'
-                            : 'bg-space-950/60 border border-slate-800 text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        {b.label}
-                      </button>
-                    ))}
+                  <div
+                    className="h-2.5 w-full rounded-md shadow-inner border border-slate-700/80"
+                    style={{
+                      background: 'linear-gradient(to right, #2d0554 0%, #0984e3 20%, #00cec9 35%, #6ab04c 50%, #f1c40f 70%, #e74c3c 85%, #ffffff 100%)'
+                    }}
+                    title="NASA LOLA Elevation Legend: -9,150 m to +10,760 m"
+                  />
+                  <div className="flex items-center justify-between text-[9px] font-mono text-slate-400">
+                    <span className="text-purple-300">-9,150 m (Basins)</span>
+                    <span className="text-emerald-300">0 m Datum</span>
+                    <span className="text-amber-300">+10,760 m (Highlands)</span>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Overlay Toggles */}
             <div className="pt-2 border-t border-slate-800/60">
@@ -366,8 +252,8 @@ export const LayerControl: React.FC<LayerControlProps> = ({
                 <button
                   onClick={onToggleMarkers}
                   className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-mono transition-all ${showMarkers
-                      ? 'bg-cyan-950/40 border-cyan-500/50 text-cyan-300 font-semibold'
-                      : 'bg-space-950/40 border-slate-800/80 text-slate-400 hover:text-slate-200'
+                    ? 'bg-cyan-950/40 border-cyan-500/50 text-cyan-300 font-semibold'
+                    : 'bg-space-950/40 border-slate-800/80 text-slate-400 hover:text-slate-200'
                     }`}
                 >
                   <span className="flex items-center gap-2">
@@ -383,8 +269,8 @@ export const LayerControl: React.FC<LayerControlProps> = ({
                 <button
                   onClick={onToggleGraticule}
                   className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-mono transition-all ${showGraticule
-                      ? 'bg-cyan-950/40 border-cyan-500/50 text-cyan-300 font-semibold'
-                      : 'bg-space-950/40 border-slate-800/80 text-slate-400 hover:text-slate-200'
+                    ? 'bg-cyan-950/40 border-cyan-500/50 text-cyan-300 font-semibold'
+                    : 'bg-space-950/40 border-slate-800/80 text-slate-400 hover:text-slate-200'
                     }`}
                 >
                   <span className="flex items-center gap-2">
@@ -410,8 +296,8 @@ export const LayerControl: React.FC<LayerControlProps> = ({
                 <button
                   onClick={onToggleAutoRotate}
                   className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-mono transition-all ${autoRotate
-                      ? 'bg-cyan-950/40 border-cyan-500/50 text-cyan-300'
-                      : 'bg-space-950/40 border-slate-800/80 text-slate-400 hover:text-slate-200'
+                    ? 'bg-cyan-950/40 border-cyan-500/50 text-cyan-300'
+                    : 'bg-space-950/40 border-slate-800/80 text-slate-400 hover:text-slate-200'
                     }`}
                 >
                   <span className="flex items-center gap-2">
@@ -427,8 +313,8 @@ export const LayerControl: React.FC<LayerControlProps> = ({
                 <button
                   onClick={onToggleSunShade}
                   className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-mono transition-all ${enableSunShade
-                      ? 'bg-amber-950/40 border-amber-500/50 text-amber-300 font-semibold'
-                      : 'bg-space-950/40 border-slate-800/80 text-slate-400 hover:text-slate-200'
+                    ? 'bg-amber-950/40 border-amber-500/50 text-amber-300 font-semibold'
+                    : 'bg-space-950/40 border-slate-800/80 text-slate-400 hover:text-slate-200'
                     }`}
                 >
                   <span className="flex items-center gap-2">
@@ -445,8 +331,8 @@ export const LayerControl: React.FC<LayerControlProps> = ({
                   <button
                     onClick={onToggleBump}
                     className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-mono transition-all ${isBumpActive
-                        ? 'bg-cyan-950/40 border-cyan-500/50 text-cyan-300 font-semibold'
-                        : 'bg-space-950/40 border-slate-800/80 text-slate-400 hover:text-slate-200'
+                      ? 'bg-cyan-950/40 border-cyan-500/50 text-cyan-300 font-semibold'
+                      : 'bg-space-950/40 border-slate-800/80 text-slate-400 hover:text-slate-200'
                       }`}
                   >
                     <span className="flex items-center gap-2">

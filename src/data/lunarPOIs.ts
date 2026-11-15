@@ -10,12 +10,12 @@ export const LUNAR_BASEMAP_LAYERS: BasemapLayerInfo[] = [
     mission: 'NASA Lunar Reconnaissance Orbiter (LRO)',
   },
   {
-    id: 'topographic',
-    name: 'LOLA Elevation (Topography)',
-    shortName: 'LOLA Elevation',
-    description: 'False-color hypsometric tint elevation map derived from the Lunar Orbiter Laser Altimeter. Scale ranges from -9 km (violet/blue) to +10.7 km (red/white).',
-    instrument: 'LOLA (Lunar Orbiter Laser Altimeter)',
-    mission: 'NASA LRO / Goddard Space Flight Center',
+    id: 'nasa-lola',
+    name: 'NASA LOLA Elevation (Moon Trek)',
+    shortName: 'Moon Trek LOLA',
+    description: 'Authentic NASA JPL Moon Trek LOLA 128 PPD Color Shaded Relief global elevation mosaic streamed via OGC WMTS.',
+    instrument: 'LOLA Laser Altimeter (NASA JPL Moon Trek)',
+    mission: 'NASA LRO / JPL Moon Trek',
     colorScale: ['#2d0554', '#0984e3', '#00cec9', '#6ab04c', '#f1c40f', '#e74c3c', '#ffffff']
   },
   {

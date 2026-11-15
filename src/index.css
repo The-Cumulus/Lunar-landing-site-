@@ -55,6 +55,32 @@
   scrollbar-width: thin;
 }
 
+/* Custom Solar Phase amber scrollbar for scrollable controls */
+.solar-scrollbar {
+  scrollbar-color: rgba(245, 158, 11, 0.6) rgba(11, 15, 25, 0.85);
+  scrollbar-width: thin;
+}
+
+.solar-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.solar-scrollbar::-webkit-scrollbar-track {
+  background: rgba(11, 15, 25, 0.75);
+  border-radius: 9999px;
+  margin: 4px 0;
+}
+
+.solar-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(245, 158, 11, 0.5);
+  border-radius: 9999px;
+  border: 1px solid rgba(15, 23, 42, 0.85);
+}
+
+.solar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 158, 11, 0.85);
+}
+
 /* Animations */
 @keyframes slideLeft {
   from {

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { TerrainAnalysisMode } from '../types/lunar';
 
 export type MapLayerId = 'default' | 'nasa-wac' | 'nasa-lola';
 
@@ -293,5 +294,124 @@ export async function fetchAndStitchNasaDemBumpTexture(
   cachedDemBumpTexture = bumpCanvasTexture;
   return bumpCanvasTexture;
 }
+
+/**
+ * Official NASA Moon Trek and USGS Astrogeology Equirectangular (EPSG:4326) WMTS/WMS endpoints
+ * Reference Sphere Datum: 1,737,400 meters
+ */
+export const NASA_TREK_WMTS_ENDPOINTS = {
+  // LRO WAC Global Mosaic (100 m/px base)
+  wacMosaic: {
+    name: 'LRO_WAC_Mosaic_Global_303ppd_v02',
+    url: 'https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/{TileMatrix}/{TileRow}/{TileCol}.jpg',
+    format: 'image/jpeg',
+    matrixSet: 'default028mm',
+    maxLevel: 9
+  },
+  // Elevation: LOLA 128 PPD Color Shaded Relief (hypsometric)
+  elevationClrShade: {
+    name: 'LRO_LOLA_ClrShade_Global_128ppd_v04',
+    url: 'https://trek.nasa.gov/tiles/Moon/EQ/LRO_LOLA_ClrShade_Global_128ppd_v04/1.0.0/default/default028mm/{TileMatrix}/{TileRow}/{TileCol}.png',
+    format: 'image/png',
+    matrixSet: 'default028mm',
+    maxLevel: 8
+  },
+  // Elevation / DEM: LOLA Kaguya DEM 512 PPD
+  demKaguya: {
+    name: 'LRO_LOLAKaguya_DEM_60N60S_512ppd',
+    url: 'https://trek.nasa.gov/tiles/Moon/EQ/LRO_LOLAKaguya_DEM_60N60S_512ppd/1.0.0/default/default028mm/{TileMatrix}/{TileRow}/{TileCol}.png',
+    format: 'image/png',
+    matrixSet: 'default028mm',
+    maxLevel: 9
+  },
+  // Slope: USGS LOLA Steel Slope Gradient (high-contrast geomorphological slope)
+  slopeSteel: {
+    name: 'LOLA_steel',
+    url: 'https://planetarymaps.usgs.gov/cgi-bin/mapserv?map=/maps/earth/moon_simp_cyl.map',
+    format: 'image/jpeg',
+    service: 'WMS'
+  },
+  // Hillshade: USGS LOLA Kaguya Shaded Relief
+  hillshade: {
+    name: 'LOLA_Kaguya_Shade',
+    url: 'https://planetarymaps.usgs.gov/cgi-bin/mapserv?map=/maps/earth/moon_simp_cyl.map',
+    format: 'image/jpeg',
+    service: 'WMS'
+  }
+};
+
+/**
+ * Creates a CesiumJS ImageryProvider for real NASA Moon Trek and USGS Astrogeology layers
+ * configured with GeographicTilingScheme and lunar radius 1,737,400 meters.
+ */
+export function createCesiumTerrainImageryProvider(
+  mode: TerrainAnalysisMode,
+  Cesium: any,
+  ellipsoid: any
+): any {
+  if (mode === 'none' || !Cesium || !ellipsoid) return null;
+
+  const moonTilingScheme = new Cesium.GeographicTilingScheme({
+    ellipsoid,
+    numberOfLevelZeroTilesX: 2,
+    numberOfLevelZeroTilesY: 1,
+    rectangle: Cesium.Rectangle.fromDegrees(-180.0, -90.0, 180.0, 90.0)
+  });
+
+  const tileMatrixLabels = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'];
+
+  if (mode === 'elevation') {
+    return new Cesium.WebMapTileServiceImageryProvider({
+      url: NASA_TREK_WMTS_ENDPOINTS.elevationClrShade.url,
+      layer: NASA_TREK_WMTS_ENDPOINTS.elevationClrShade.name,
+      style: 'default',
+      format: 'image/png',
+      tileMatrixSetID: NASA_TREK_WMTS_ENDPOINTS.elevationClrShade.matrixSet,
+      tileMatrixLabels,
+      tilingScheme: moonTilingScheme,
+      maximumLevel: NASA_TREK_WMTS_ENDPOINTS.elevationClrShade.maxLevel
+    });
+  }
+
+  if (mode === 'slope') {
+    return new Cesium.WebMapServiceImageryProvider({
+      url: NASA_TREK_WMTS_ENDPOINTS.slopeSteel.url,
+      layers: NASA_TREK_WMTS_ENDPOINTS.slopeSteel.name,
+      parameters: {
+        transparent: true,
+        format: 'image/jpeg'
+      },
+      tilingScheme: moonTilingScheme
+    });
+  }
+
+  if (mode === 'roughness') {
+    return new Cesium.WebMapTileServiceImageryProvider({
+      url: NASA_TREK_WMTS_ENDPOINTS.demKaguya.url,
+      layer: NASA_TREK_WMTS_ENDPOINTS.demKaguya.name,
+      style: 'default',
+      format: 'image/png',
+      tileMatrixSetID: NASA_TREK_WMTS_ENDPOINTS.demKaguya.matrixSet,
+      tileMatrixLabels,
+      tilingScheme: moonTilingScheme,
+      maximumLevel: NASA_TREK_WMTS_ENDPOINTS.demKaguya.maxLevel
+    });
+  }
+
+  if (mode === 'hillshade') {
+    return new Cesium.WebMapServiceImageryProvider({
+      url: NASA_TREK_WMTS_ENDPOINTS.hillshade.url,
+      layers: NASA_TREK_WMTS_ENDPOINTS.hillshade.name,
+      parameters: {
+        transparent: true,
+        format: 'image/jpeg'
+      },
+      tilingScheme: moonTilingScheme
+    });
+  }
+
+  return null;
+}
+
 
 

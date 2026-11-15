@@ -174,8 +174,8 @@ export class LunarTextureManager {
     switch (basemap) {
       case 'natural':
         return this.getNaturalTexture();
-      case 'topographic':
-        return this.getTopographicTexture();
+      case 'nasa-lola':
+        return this.getNaturalTexture();
       case 'shaded-relief':
         return this.getBumpTexture();
       default:

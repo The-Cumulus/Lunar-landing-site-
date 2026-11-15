@@ -29,6 +29,7 @@ interface POISearchModalProps {
   pois: LunarPOI[];
   onSelectPOI: (poi: LunarPOI) => void;
   onNavigateCoordinate?: (lat: number, lng: number, customPOI?: LunarPOI) => void;
+  initialQuery?: string;
 }
 
 // Popular lunar coordinate presets for fast exploration
@@ -49,10 +50,21 @@ export const POISearchModal: React.FC<POISearchModalProps> = ({
   onClose,
   pois,
   onSelectPOI,
-  onNavigateCoordinate
+  onNavigateCoordinate,
+  initialQuery = ''
 }) => {
   const [activeTab, setActiveTab] = useState<'search' | 'coordinate'>('search');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(initialQuery);
+
+  // Synchronize initialQuery and reset errors whenever modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setCoordError(null);
+      if (initialQuery !== undefined) {
+        setSearchTerm(initialQuery);
+      }
+    }
+  }, [isOpen, initialQuery]);
 
   // Coordinate Tool state
   const [latInput, setLatInput] = useState<string>('0.0000');
@@ -283,24 +295,31 @@ export const POISearchModal: React.FC<POISearchModalProps> = ({
         {activeTab === 'search' && (
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
             {/* Search Input Box */}
-            <div className="p-3.5 border-b border-slate-800 flex items-center gap-3">
-              <Search className="w-5 h-5 text-cyan-400 shrink-0" />
+            <div className="p-3 sm:p-3.5 border-b border-slate-800 flex items-center gap-2.5 sm:gap-3 min-w-0 box-border overflow-hidden">
+              <Search className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 shrink-0" />
               <input
                 type="text"
                 autoFocus
                 placeholder="Search missions, craters, astronauts, or enter lat/lon coordinates..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-transparent text-sm font-mono text-white placeholder-slate-500 focus:outline-none"
+                className="min-w-0 flex-1 w-full bg-transparent text-xs sm:text-sm font-mono text-white placeholder:text-slate-500 focus:outline-none box-border leading-normal"
               />
               {searchTerm && (
-                <button onClick={() => setSearchTerm('')} className="p-1 text-slate-400 hover:text-white">
+                <button 
+                  type="button"
+                  onClick={() => setSearchTerm('')} 
+                  className="p-1 text-slate-400 hover:text-white shrink-0 rounded hover:bg-slate-800 transition-colors"
+                  title="Clear search query"
+                >
                   <X className="w-4 h-4" />
                 </button>
               )}
               <button
+                type="button"
                 onClick={onClose}
                 className="px-2 py-1 rounded-lg text-xs font-mono text-slate-400 hover:text-white hover:bg-slate-800 shrink-0"
+                title="Close (ESC)"
               >
                 ESC
               </button>

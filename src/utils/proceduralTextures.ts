@@ -511,8 +511,8 @@ export class LunarTextureGenerator {
     switch (type) {
       case 'natural':
         return this.getNaturalTexture();
-      case 'topographic':
-        return this.getTopographicTexture();
+      case 'nasa-lola':
+        return this.getNaturalTexture();
       case 'shaded-relief':
         return this.getShadedReliefTexture();
       default:

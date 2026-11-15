@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Sun, 
   SunMedium,
@@ -8,7 +8,8 @@ import {
   Compass, 
   ChevronDown, 
   ChevronUp,
-  Sparkles
+  Sparkles,
+  X
 } from 'lucide-react';
 
 interface SolarPhaseControlProps {
@@ -19,6 +20,7 @@ interface SolarPhaseControlProps {
   onToggleAutoCycle: () => void;
   enableSunShade: boolean;
   onToggleSunShade: () => void;
+  variant?: 'inline' | 'floating';
 }
 
 export const SolarPhaseControl: React.FC<SolarPhaseControlProps> = ({
@@ -28,15 +30,26 @@ export const SolarPhaseControl: React.FC<SolarPhaseControlProps> = ({
   autoCycle,
   onToggleAutoCycle,
   enableSunShade,
-  onToggleSunShade
+  onToggleSunShade,
+  variant = 'floating'
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside for inline variant
+  useEffect(() => {
+    if (!isExpanded || variant !== 'inline') return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsExpanded(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isExpanded, variant]);
 
   // Calculate near-side illumination percentage from Earth's viewpoint (assuming Earth at +Z)
-  // When sunAngle is 0° (or 360°), Sun is in +Z direction -> 100% full moon
-  // When sunAngle is 180°, Sun is in -Z direction -> 0% new moon
   const rad = (sunAngle * Math.PI) / 180;
-  // Nearside facing +Z
   const illuminationFraction = Math.max(0, Math.min(1, (1 + Math.cos(rad)) / 2));
   const illuminationPercent = Math.round(illuminationFraction * 100);
 
@@ -60,13 +73,204 @@ export const SolarPhaseControl: React.FC<SolarPhaseControlProps> = ({
     { label: 'First Quarter', angle: 270 },
   ];
 
+  // ================= INLINE HEADER VARIANT (FIGMA MATCH) =================
+  if (variant === 'inline') {
+    return (
+      <div ref={containerRef} className={`relative pointer-events-auto ${className || ''}`}>
+        <div 
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-2 sm:gap-2.5 px-3 py-1.5 rounded-2xl bg-[#131426]/95 border border-[#1E293B] hover:border-amber-500/50 shadow-xl backdrop-blur-xl cursor-pointer select-none transition-all group shrink-0"
+          title="Click to adjust Solar Phase, Lighting and Terminator Angle"
+        >
+          {/* Amber Sun Icon in rounded square */}
+          <div className="p-1.5 rounded-xl bg-[#451A03] border border-[#D97706]/70 text-[#F59E0B] shadow-sm shadow-amber-950/60 shrink-0">
+            <Sun className={`w-4 h-4 ${autoCycle ? 'animate-spin-slow text-amber-300' : ''}`} />
+          </div>
+
+          {/* Title */}
+          <div className="flex flex-col text-left shrink-0">
+            <span className="text-[10px] font-bold font-mono tracking-wider text-slate-200 uppercase leading-none">
+              SOLAR PHASE &amp;
+            </span>
+            <span className="text-[10px] font-bold font-mono tracking-wider text-slate-200 uppercase leading-tight">
+              LIGHTING
+            </span>
+          </div>
+
+          {/* Shade ON / OFF Button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSunShade();
+            }}
+            title={enableSunShade ? "Turn Solar Shade OFF (Press S)" : "Turn Solar Shade ON (Press S)"}
+            className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all shrink-0 ${
+              enableSunShade
+                ? 'bg-[#F59E0B]/20 text-[#F59E0B] border-[#F59E0B]/50 shadow-sm shadow-amber-500/20'
+                : 'bg-cyan-500/20 text-cyan-300 border-cyan-400/50'
+            }`}
+          >
+            {enableSunShade ? (
+              <>
+                <Moon className="w-3 h-3 text-amber-400" />
+                <span>Shade ON</span>
+              </>
+            ) : (
+              <>
+                <SunMedium className="w-3 h-3 text-cyan-300" />
+                <span>Shade OFF</span>
+              </>
+            )}
+          </button>
+
+          {/* Live Phase Text in vivid green */}
+          <span className="text-[10.5px] font-mono font-semibold text-[#34C759] hidden md:inline truncate max-w-[190px]">
+            {getPhaseName(sunAngle)} ({illuminationPercent}%)
+          </span>
+
+          {/* Play/Pause Cycle Button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleAutoCycle();
+            }}
+            title={autoCycle ? "Pause Solar Cycle" : "Simulate Real-time Solar Cycle"}
+            className={`p-1 rounded-lg border transition-all shrink-0 ${
+              autoCycle 
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/30 animate-pulse' 
+                : 'bg-[#030712] text-slate-400 border-[#1E293B] hover:text-white'
+            }`}
+          >
+            {autoCycle ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+          </button>
+
+          {/* Dropdown Chevron */}
+          <button 
+            type="button"
+            className="text-slate-400 group-hover:text-white p-0.5 shrink-0" 
+            title={isExpanded ? "Collapse Solar Controls" : "Expand Solar Controls"}
+          >
+            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {/* Dropdown Menu when Expanded */}
+        {isExpanded && (
+          <div 
+            onWheel={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            className="absolute top-full right-0 mt-2 w-80 max-h-[420px] rounded-2xl bg-space-950/95 border border-slate-800 shadow-2xl backdrop-blur-2xl p-3.5 space-y-3 z-50 animate-fadeIn font-mono text-xs overflow-y-auto scrollbar-thin"
+          >
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+              <div className="flex items-center gap-2">
+                <Sun className="w-4 h-4 text-amber-400" />
+                <span className="font-bold text-slate-100">Solar Lighting Controls</span>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsExpanded(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Slider with Angle and Illumination */}
+            <div className="p-2.5 rounded-xl bg-space-900/80 border border-slate-800">
+              <div className="flex items-center justify-between text-xs font-mono mb-1.5">
+                <span className="text-slate-400 flex items-center gap-1">
+                  <Compass className="w-3.5 h-3.5 text-amber-400" />
+                  Sun Azimuth
+                </span>
+                <span className="text-amber-300 font-bold">
+                  {Math.round(sunAngle)}°
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="360"
+                step="1"
+                value={Math.round(sunAngle)}
+                onChange={(e) => onSunAngleChange(Number(e.target.value), true)}
+                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+              />
+              <div className="flex justify-between text-[9px] font-mono text-slate-400 mt-1">
+                <span>0° (Nearside)</span>
+                <span>90°</span>
+                <span>180° (Farside)</span>
+                <span>270°</span>
+                <span>360°</span>
+              </div>
+            </div>
+
+            {/* Quick Phase Presets */}
+            <div className="p-2.5 rounded-xl bg-space-900/80 border border-slate-800">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block font-semibold flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  Phase Presets
+                </label>
+                {autoCycle && (
+                  <span className="text-[9px] font-mono text-amber-400/90 animate-pulse">
+                    Instant Jump
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {presets.map(p => {
+                  const diff = Math.abs((sunAngle - p.angle + 180) % 360 - 180);
+                  const isActive = diff < 8;
+                  return (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => onSunAngleChange(p.angle, true)}
+                      title={`Jump to ${p.label} (${p.angle}°)`}
+                      className={`px-2 py-1.5 rounded-lg text-[10px] font-mono border transition-all text-left flex items-center justify-between relative group ${
+                        isActive
+                          ? 'bg-amber-950/60 border-amber-500 text-amber-200 font-semibold shadow-md shadow-amber-950/60'
+                          : 'bg-space-900/80 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-space-800/80'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            isActive ? 'bg-amber-400 shadow-sm shadow-amber-300 animate-pulse' : 'bg-slate-600'
+                          }`}
+                        />
+                        <span className="truncate">{p.label}</span>
+                      </div>
+                      <span className="text-[9px] text-slate-400 shrink-0 ml-1">{p.angle}°</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Terminator Science Note */}
+            <div className="p-2.5 rounded-xl bg-space-900/60 border border-slate-800 text-[10px] text-slate-400 leading-tight">
+              <span className="text-amber-400 font-semibold font-mono">Terminator Effect:</span>{' '}
+              Craters near the day/night boundary cast elongated shadows, revealing sheer mountain walls and central peaks.
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ================= FLOATING PANEL VARIANT =================
   return (
-    <div className={className || "absolute top-16 sm:top-20 right-3 sm:right-4 z-20 w-72 sm:w-80"}>
-      <div className="rounded-2xl bg-space-900/90 border border-slate-800/90 backdrop-blur-xl shadow-2xl overflow-hidden transition-all duration-300">
+    <div className={className || "absolute top-16 sm:top-20 right-3 sm:right-4 z-20 w-72 sm:w-80 pointer-events-auto"}>
+      <div className="rounded-2xl bg-space-900/90 border border-slate-800/90 backdrop-blur-xl shadow-2xl overflow-hidden transition-all duration-300 flex flex-col max-h-[min(340px,calc(100vh-25rem))]">
         {/* Header Bar */}
         <div 
           onClick={() => setIsExpanded(!isExpanded)}
-          className="p-3.5 flex items-center justify-between cursor-pointer border-b border-slate-800/60 hover:bg-slate-800/30 transition-colors"
+          className={`p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-800/30 transition-colors select-none shrink-0 ${
+            isExpanded ? 'border-b border-slate-800/60' : ''
+          }`}
         >
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 rounded-lg bg-amber-950/80 border border-amber-600/50 text-amber-400">
@@ -86,6 +290,7 @@ export const SolarPhaseControl: React.FC<SolarPhaseControlProps> = ({
           <div className="flex items-center gap-1.5">
             {/* Quick Solar Shade Toggle Key */}
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleSunShade();
@@ -115,6 +320,7 @@ export const SolarPhaseControl: React.FC<SolarPhaseControlProps> = ({
             </button>
 
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleAutoCycle();
@@ -128,7 +334,7 @@ export const SolarPhaseControl: React.FC<SolarPhaseControlProps> = ({
             >
               {autoCycle ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
             </button>
-            <button className="text-slate-400 hover:text-white p-1">
+            <button className="text-slate-400 hover:text-white p-1" title={isExpanded ? "Collapse tool" : "Expand tool"}>
               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
           </div>
@@ -136,7 +342,11 @@ export const SolarPhaseControl: React.FC<SolarPhaseControlProps> = ({
 
         {/* Collapsible Controls */}
         {isExpanded && (
-          <div className="p-3.5 space-y-3.5">
+          <div 
+            onWheel={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            className="p-3.5 space-y-3 overflow-y-auto overscroll-contain flex-1 min-h-0 solar-scrollbar pr-2"
+          >
             {/* Interactive Toggle Switch Card for Solar Shade */}
             <div className="flex items-center justify-between p-2.5 rounded-xl bg-space-950/70 border border-slate-800/90 shadow-inner">
               <div className="flex items-center gap-2.5">
@@ -189,6 +399,7 @@ export const SolarPhaseControl: React.FC<SolarPhaseControlProps> = ({
                 </span>
               </div>
               <button
+                type="button"
                 onClick={onToggleAutoCycle}
                 className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold transition-all flex items-center gap-1.5 ${
                   autoCycle
@@ -202,7 +413,7 @@ export const SolarPhaseControl: React.FC<SolarPhaseControlProps> = ({
             </div>
 
             {/* Slider with Angle and Illumination */}
-            <div>
+            <div className="p-2.5 rounded-xl bg-space-950/70 border border-slate-800/80">
               <div className="flex items-center justify-between text-xs font-mono mb-1.5">
                 <span className="text-slate-400 flex items-center gap-1">
                   <Compass className="w-3.5 h-3.5 text-amber-400" />
@@ -231,7 +442,7 @@ export const SolarPhaseControl: React.FC<SolarPhaseControlProps> = ({
             </div>
 
             {/* Quick Phase Presets */}
-            <div>
+            <div className="p-2.5 rounded-xl bg-space-950/70 border border-slate-800/80">
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block font-semibold flex items-center gap-1">
                   <Sparkles className="w-3 h-3 text-amber-400" />
@@ -239,7 +450,7 @@ export const SolarPhaseControl: React.FC<SolarPhaseControlProps> = ({
                 </label>
                 {autoCycle && (
                   <span className="text-[9px] font-mono text-amber-400/90 animate-pulse">
-                    Instant Jump Active
+                    Instant Jump
                   </span>
                 )}
               </div>
@@ -250,12 +461,13 @@ export const SolarPhaseControl: React.FC<SolarPhaseControlProps> = ({
                   return (
                     <button
                       key={p.label}
+                      type="button"
                       onClick={() => onSunAngleChange(p.angle, true)}
                       title={`Jump to ${p.label} (${p.angle}°)`}
-                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-mono border transition-all text-left flex items-center justify-between relative group ${
+                      className={`px-2 py-1.5 rounded-lg text-[10px] font-mono border transition-all text-left flex items-center justify-between relative group ${
                         isActive
                           ? 'bg-amber-950/60 border-amber-500 text-amber-200 font-semibold shadow-md shadow-amber-950/60'
-                          : 'bg-space-950/60 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-space-950/90'
+                          : 'bg-space-900/80 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-space-800/80'
                       }`}
                     >
                       <div className="flex items-center gap-1.5 truncate">
@@ -274,7 +486,7 @@ export const SolarPhaseControl: React.FC<SolarPhaseControlProps> = ({
             </div>
 
             {/* Science note on Terminator */}
-            <div className="p-2 rounded-xl bg-space-950/60 border border-slate-800/80 text-[10px] text-slate-400 leading-tight">
+            <div className="p-2.5 rounded-xl bg-space-950/60 border border-slate-800/80 text-[10px] text-slate-400 leading-tight">
               <span className="text-amber-400 font-semibold font-mono">Terminator Effect:</span>{' '}
               Craters near the day/night boundary cast elongated shadows, revealing sheer mountain walls and central peaks with maximum geological relief.
             </div>

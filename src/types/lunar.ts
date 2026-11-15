@@ -22,7 +22,7 @@ export interface LunarPOI {
   accentColor: string;
 }
 
-export type BasemapType = 'natural' | 'topographic' | 'shaded-relief';
+export type BasemapType = 'natural' | 'nasa-lola' | 'shaded-relief';
 
 export interface BasemapLayerInfo {
   id: BasemapType;
@@ -85,4 +85,29 @@ export interface TerrainFilterConfig {
   continuousTargetElev?: number | null; // target elevation in meters when continuous cursor filter is active
   continuousWindowM?: number;    // half-width of the highlight window in meters (default 1800m)
 }
+
+export interface QuickMapTelemetry {
+  lat: number;
+  lng: number;
+  latFormatted: string; // 5 decimal places: e.g. "+00.67408°" or "00.67408° N"
+  lngFormatted: string; // 5 decimal places: e.g. "+023.47297°" or "023.47297° E"
+  resolutionMetersPerPixel: number; // e.g. 100.2
+  resolutionFormatted: string; // e.g. "100.2 m/px" or "1.25 km/px"
+  elevationMeters?: number;
+  slopeDeg?: number;
+  roughnessM?: number;
+  terrainClass?: string;
+  nearestFeature?: string;
+}
+
+export interface LROCLayerConfig {
+  showWacBase: boolean;
+  showLolaOverlay: boolean;
+  lolaOpacity: number; // 0.0 to 1.0
+  showNacOverlays: boolean;
+  showUSGSNomenclature: boolean;
+  showGraticule: boolean;
+  nomenclatureFilter?: 'all' | 'crater' | 'landing_site' | 'mare';
+}
+
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   X, 
   MapPin, 
@@ -10,14 +10,18 @@ import {
   Compass, 
   Award, 
   CheckCircle2, 
-  Target
+  Target,
+  Copy,
+  Check
 } from 'lucide-react';
 import { LunarPOI } from '../../types/lunar';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface POIInfoPanelProps {
   poi: LunarPOI | null;
   onClose: () => void;
   onFocusSite?: (poi: LunarPOI) => void;
+  onCopyCoordinates?: (coordString: string, siteName: string) => void;
   className?: string;
 }
 
@@ -25,9 +29,25 @@ export const POIInfoPanel: React.FC<POIInfoPanelProps> = ({
   poi,
   onClose,
   onFocusSite,
+  onCopyCoordinates,
   className = ''
 }) => {
+  const [copied, setCopied] = useState(false);
   if (!poi) return null;
+
+  const handleCopyCoords = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const text = `${poi.lat.toFixed(5)}, ${poi.lng.toFixed(5)}`;
+    const success = await copyToClipboard(text);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+      onCopyCoordinates?.(text, poi.name);
+    }
+  };
 
   return (
     <div className={`pointer-events-auto min-h-0 flex-1 flex flex-col rounded-2xl bg-space-900/95 border border-slate-800/90 backdrop-blur-2xl shadow-2xl overflow-hidden animate-slideLeft w-full ${className}`}>
@@ -93,27 +113,62 @@ export const POIInfoPanel: React.FC<POIInfoPanelProps> = ({
         {/* Scrollable Content Body - fully interactive scrollbar */}
         <div className="flex-1 overflow-y-auto pointer-events-auto p-4 sm:p-5 space-y-4 text-xs font-mono">
           {/* Coordinates & Elevation Matrix */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between px-1 text-[10px] text-slate-400 uppercase tracking-wider">
+              <span>Selenographic Position</span>
+              <button
+                type="button"
+                onClick={handleCopyCoords}
+                onContextMenu={handleCopyCoords}
+                className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300 font-semibold transition-colors"
+                title="Right click or click to copy coordinates"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span className="text-emerald-400">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" />
+                    <span>Copy Lat, Lon</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div 
+              onClick={handleCopyCoords}
+              onContextMenu={handleCopyCoords}
+              title="Click or right-click to copy coordinates"
+              className="grid grid-cols-2 gap-2 cursor-pointer group"
+            >
+              <div className="p-2.5 rounded-xl bg-space-950/70 border border-slate-800/80 group-hover:border-cyan-500/50 transition-colors">
+                <div className="flex items-center gap-1 text-[10px] text-slate-400 uppercase tracking-wider mb-1">
+                  <MapPin className="w-3 h-3 text-cyan-400" />
+                  Lunar Latitude
+                </div>
+                <div className="text-xs font-bold text-slate-100 flex items-center justify-between">
+                  <span>{poi.lat >= 0 ? `+${poi.lat.toFixed(5)}° N` : `${poi.lat.toFixed(5)}° S`}</span>
+                  <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-space-950/70 border border-slate-800/80 group-hover:border-cyan-500/50 transition-colors">
+                <div className="flex items-center gap-1 text-[10px] text-slate-400 uppercase tracking-wider mb-1">
+                  <Compass className="w-3 h-3 text-cyan-400" />
+                  Lunar Longitude
+                </div>
+                <div className="text-xs font-bold text-slate-100 flex items-center justify-between">
+                  <span>{poi.lng >= 0 ? `+${poi.lng.toFixed(5)}° E` : `${poi.lng.toFixed(5)}° W`}</span>
+                  <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Elevation & Touchdown Date */}
           <div className="grid grid-cols-2 gap-2">
-            <div className="p-2.5 rounded-xl bg-space-950/70 border border-slate-800/80">
-              <div className="flex items-center gap-1 text-[10px] text-slate-400 uppercase tracking-wider mb-1">
-                <MapPin className="w-3 h-3 text-cyan-400" />
-                Lunar Latitude
-              </div>
-              <div className="text-xs font-bold text-slate-100">
-                {poi.lat >= 0 ? `+${poi.lat.toFixed(4)}° N` : `${poi.lat.toFixed(4)}° S`}
-              </div>
-            </div>
-
-            <div className="p-2.5 rounded-xl bg-space-950/70 border border-slate-800/80">
-              <div className="flex items-center gap-1 text-[10px] text-slate-400 uppercase tracking-wider mb-1">
-                <Compass className="w-3 h-3 text-cyan-400" />
-                Lunar Longitude
-              </div>
-              <div className="text-xs font-bold text-slate-100">
-                {poi.lng >= 0 ? `+${poi.lng.toFixed(4)}° E` : `${poi.lng.toFixed(4)}° W`}
-              </div>
-            </div>
-
             <div className="p-2.5 rounded-xl bg-space-950/70 border border-slate-800/80">
               <div className="flex items-center gap-1 text-[10px] text-slate-400 uppercase tracking-wider mb-1">
                 <Mountain className="w-3 h-3 text-emerald-400" />

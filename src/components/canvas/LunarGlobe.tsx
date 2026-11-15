@@ -56,18 +56,23 @@ export const LunarGlobe: React.FC<LunarGlobeProps> = ({
   }, []);
 
   const activeBumpTexture = useMemo(() => {
-    if (customBumpTexture) {
+    // If explicitly set (including null to disable), respect it
+    if (customBumpTexture !== undefined) {
       return customBumpTexture;
     }
-    return defaultBumpTexture;
-  }, [customBumpTexture, defaultBumpTexture]);
+    // Only apply bump map for shaded-relief, leave natural solar texture smooth
+    if (basemap === 'shaded-relief') {
+      return defaultBumpTexture;
+    }
+    return null;
+  }, [customBumpTexture, defaultBumpTexture, basemap]);
 
   // Ensure Moon sphere's material.map, material.bumpMap, and needsUpdate are updated
   useEffect(() => {
     if (materialRef.current) {
       materialRef.current.map = activeTexture;
-      materialRef.current.bumpMap = activeBumpTexture || null;
-      materialRef.current.bumpScale = bumpScale;
+      materialRef.current.bumpMap = activeBumpTexture;
+      materialRef.current.bumpScale = activeBumpTexture ? bumpScale : 0;
       materialRef.current.needsUpdate = true;
     }
   }, [activeTexture, activeBumpTexture, bumpScale]);
@@ -140,7 +145,7 @@ export const LunarGlobe: React.FC<LunarGlobeProps> = ({
             ref={materialRef}
             map={activeTexture}
             bumpMap={activeBumpTexture || undefined}
-            bumpScale={bumpScale}
+            bumpScale={activeBumpTexture ? bumpScale : 0}
             roughness={basemap === 'natural' ? 0.92 : 0.82}
             metalness={0.02}
           />

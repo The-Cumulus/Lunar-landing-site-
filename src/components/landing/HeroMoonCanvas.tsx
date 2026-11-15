@@ -76,8 +76,6 @@ const HeroMoonMesh: React.FC<HeroMoonMeshProps> = ({ radius = 1.58 }) => {
         <sphereGeometry args={[radius, 128, 128]} />
         <meshStandardMaterial
           map={texture}
-          bumpMap={bumpMap}
-          bumpScale={0.02}
           roughness={0.92}
           metalness={0.02}
         />

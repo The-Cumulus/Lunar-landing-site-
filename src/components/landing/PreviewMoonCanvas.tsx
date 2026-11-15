@@ -97,10 +97,9 @@ const PreviewMoonMesh: React.FC<PreviewMoonMeshProps> = ({
   const meshRef = useRef<THREE.Mesh>(null);
 
   const naturalTexture = useMemo(() => LunarTextureManager.getNaturalTexture(), []);
-  const topoTexture = useMemo(() => LunarTextureManager.getTopographicTexture(), []);
   const bumpMap = useMemo(() => LunarTextureManager.getBumpTexture(), []);
 
-  const activeTexture = basemap === 'topographic' ? topoTexture : naturalTexture;
+  const activeTexture = basemap === 'shaded-relief' ? bumpMap : naturalTexture;
 
   // Gentle auto-rotation that pauses when user hovers a site
   useFrame((_, delta) => {
@@ -116,8 +115,6 @@ const PreviewMoonMesh: React.FC<PreviewMoonMeshProps> = ({
         <sphereGeometry args={[radius, 128, 128]} />
         <meshStandardMaterial
           map={activeTexture}
-          bumpMap={basemap === 'natural' ? bumpMap : undefined}
-          bumpScale={0.045}
           roughness={basemap === 'natural' ? 0.92 : 0.8}
           metalness={0.02}
         />

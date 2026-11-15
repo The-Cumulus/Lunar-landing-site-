@@ -1,19 +1,33 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { LunarScene, LunarSceneRef } from '../canvas/LunarScene';
+import { CesiumMoonGlobe, CesiumMoonGlobeRef, RightClickCoordinateEvent } from '../cesium/CesiumMoonGlobe';
+import { LunarFlyoverControl } from '../ui/LunarFlyoverControl';
 import { Header } from '../ui/Header';
 import { LayerControl } from '../ui/LayerControl';
 import { TerrainAnalysisControl } from '../ui/TerrainAnalysisControl';
 import { SolarPhaseControl } from '../ui/SolarPhaseControl';
 import { CoordinateOverlay } from '../ui/CoordinateOverlay';
+import { QuickMapBottomBar } from '../ui/QuickMapBottomBar';
+import { LROCLayerSwitcher } from '../ui/LROCLayerSwitcher';
+import { USGSNomenclatureModal } from '../ui/USGSNomenclatureModal';
 import { POIInfoPanel } from '../ui/POIInfoPanel';
 import { POISearchModal } from '../ui/POISearchModal';
 import { HelpGuideModal } from '../ui/HelpGuideModal';
+import { LunarSiteComparatorModal } from '../comparator/LunarSiteComparatorModal';
+import { LunarHorizonObserverModal } from '../ephemeris/LunarHorizonObserverModal';
+import { LunarMissionEvaluatorModal } from '../mission/LunarMissionEvaluatorModal';
+import { HorizonObserverActiveHUD, ActiveHorizonState } from '../ui/HorizonObserverActiveHUD';
+import { CoordinateContextMenu } from '../ui/CoordinateContextMenu';
+import { CoordinateCopyToast, ToastData } from '../ui/CoordinateCopyToast';
+import { WebsiteTutorial } from '../tutorial/WebsiteTutorial';
 import { LUNAR_POIS } from '../../data/lunarPOIs';
-import { BasemapType, LunarPOI, POICategory, LunarCoordinateHover, TerrainFilterConfig, ElevationCategory } from '../../types/lunar';
-import { MapPin, X, Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { USGSNomenclatureFeature } from '../../data/usgsLunarNomenclature';
+import { BasemapType, LunarPOI, POICategory, LunarCoordinateHover, TerrainFilterConfig, ElevationCategory, QuickMapTelemetry, LROCLayerConfig } from '../../types/lunar';
+import { MapPin, X, Check, ChevronLeft, ChevronRight, Loader2, GitCompare, Compass, Rocket, Layers } from 'lucide-react';
 import * as THREE from 'three';
-import { MapLayerOverlay } from '../ui/MapLayerOverlay';
 import { MapLayerId, fetchAndStitchNasaWmtsTiles, fetchAndStitchNasaDemBumpTexture } from '../../utils/nasaWmtsLoader';
+import { copyToClipboard } from '../../utils/clipboard';
+import { getInitialHorizonState, saveHorizonState } from '../../utils/horizonStatePersistence';
+import { calculateLunarHorizonEphemeris } from '../../utils/lunarEphemeris';
 
 interface ExplorerDashboardProps {
   onBackToLanding?: () => void;
@@ -21,13 +35,17 @@ interface ExplorerDashboardProps {
 }
 
 export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDashboardProps) {
-  const lunarSceneRef = useRef<LunarSceneRef>(null);
+  const lunarSceneRef = useRef<CesiumMoonGlobeRef>(null);
   const lastUserActionTimestampRef = useRef<number>(0);
+
+  // 3D Cinematic Flyover Tour state
+  const [isFlyoverTourActive, setIsFlyoverTourActive] = useState<boolean>(false);
+  const [currentFlyoverIndex, setCurrentFlyoverIndex] = useState<number>(0);
 
   // Atlas configuration state
   const [isLeftToolbarOpen, setIsLeftToolbarOpen] = useState<boolean>(true);
   const [basemap, setBasemap] = useState<BasemapType>('natural');
-  const [sunAngle, setSunAngle] = useState<number>(35);
+  const [sunAngle, setSunAngle] = useState<number>(0);
   const [enableSunShade, setEnableSunShade] = useState<boolean>(true); // Solar shade / terminator shadows
   const [autoRotate, setAutoRotate] = useState<boolean>(false);
   const [autoSunCycle, setAutoSunCycle] = useState<boolean>(false);
@@ -35,6 +53,20 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
   const [showMarkers, setShowMarkers] = useState<boolean>(false);     // OFF by default
   const [showPOILabels, setShowPOILabels] = useState<boolean>(false);
   const [activeCategory, setActiveCategory] = useState<POICategory | 'all'>('all');
+
+  // LROC QuickMap Tile & WMTS Layer System state
+  const [lrocConfig, setLrocConfig] = useState<LROCLayerConfig>({
+    showWacBase: true,
+    showLolaOverlay: false,
+    lolaOpacity: 0.65,
+    showNacOverlays: true,
+    showUSGSNomenclature: false,
+    showGraticule: false,
+    nomenclatureFilter: 'all'
+  });
+  const [isLayerSwitcherOpen, setIsLayerSwitcherOpen] = useState<boolean>(false);
+  const [quickMapTelemetry, setQuickMapTelemetry] = useState<QuickMapTelemetry | null>(null);
+  const [selectedNomenclature, setSelectedNomenclature] = useState<USGSNomenclatureFeature | null>(null);
 
   // Scientific LOLA Terrain Analysis & Filtering System state
   const [terrainConfig, setTerrainConfig] = useState<TerrainFilterConfig>({
@@ -88,7 +120,7 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
 
   // NASA LOLA Grayscale Elevation DEM bumpMap state for realistic 3D crater and mountain relief
   const [nasaBumpTexture, setNasaBumpTexture] = useState<THREE.Texture | null>(null);
-  const [isBumpReliefEnabled, setIsBumpReliefEnabled] = useState<boolean>(true);
+  const [isBumpReliefEnabled, setIsBumpReliefEnabled] = useState<boolean>(false);
   const [isStitchingBump, setIsStitchingBump] = useState<boolean>(false);
 
   // Automatically load NASA's grayscale elevation mosaic at zoom 2 onto a separate CanvasTexture
@@ -115,13 +147,60 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
     };
   }, []);
 
-  // Prompt banner asking user if they want pins enabled
-  const [showPinsPrompt, setShowPinsPrompt] = useState<boolean>(true);
+  // Prompt banner asking user if they want pins enabled (pins are now ON by default)
+  const [showPinsPrompt, setShowPinsPrompt] = useState<boolean>(false);
 
   // Interactive selection state
   const [selectedPOI, setSelectedPOI] = useState<LunarPOI | null>(null);
   const [hoverCoordinate, setHoverCoordinate] = useState<LunarCoordinateHover | null>(null);
   const [clickedCoordinate, setClickedCoordinate] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Right-Click Selenographic Coordinate Context Menu and Toast State
+  const [contextMenu, setContextMenu] = useState<{
+    isOpen: boolean;
+    x: number;
+    y: number;
+    lat: number;
+    lng: number;
+    siteName?: string;
+    elevationMeters?: number;
+  }>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    lat: 0,
+    lng: 0
+  });
+
+  const [copyToast, setCopyToast] = useState<ToastData | null>(null);
+
+  const handleRightClickCoordinate = useCallback((event: RightClickCoordinateEvent) => {
+    // 1. Immediately show copy feedback toast
+    setCopyToast({
+      title: '✓ Coordinates Copied to Clipboard',
+      coordinates: `${event.lat.toFixed(5)}, ${event.lng.toFixed(5)}`,
+      siteName: event.siteName
+    });
+
+    // 2. Open rich context menu at cursor position
+    setContextMenu({
+      isOpen: true,
+      x: event.screenX,
+      y: event.screenY,
+      lat: event.lat,
+      lng: event.lng,
+      siteName: event.siteName,
+      elevationMeters: event.elevationMeters
+    });
+  }, []);
+
+  const handleCopyToastNotification = useCallback((coordString: string, siteName: string) => {
+    setCopyToast({
+      title: '✓ Coordinates Copied to Clipboard',
+      coordinates: coordString,
+      siteName
+    });
+  }, []);
 
   // Active hovered site/pin tracker ref: protects pin telemetry from being clobbered by canvas raycast pointerout
   const hoveredSiteRef = useRef<LunarCoordinateHover | null>(null);
@@ -179,11 +258,100 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
   // Modals state
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
+  const [isComparatorOpen, setIsComparatorOpen] = useState<boolean>(false);
+  const [isHorizonToolOpen, setIsHorizonToolOpen] = useState<boolean>(false);
+  const [isMissionEvaluatorOpen, setIsMissionEvaluatorOpen] = useState<boolean>(false);
+  const [isTutorialOpen, setIsTutorialOpen] = useState<boolean>(false);
+  const [tutorialStartStep, setTutorialStartStep] = useState<number>(0);
+  const [searchModalInitialQuery, setSearchModalInitialQuery] = useState<string>('');
+
+  // Automatic Welcome Tutorial activation on every fresh dashboard load / reload / return from Homepage
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setTutorialStartStep(0);
+      setIsTutorialOpen(true);
+    }, 700);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Active Horizon Observation HUD State
+  // Always starts as null on page load — the HUD must only appear when the
+  // user explicitly triggers an Orient-Sun or Orient-Earth action within the
+  // current session. It must NOT be restored from localStorage on page open.
+  const [activeHorizonState, setActiveHorizonState] = useState<ActiveHorizonState | null>(null);
 
   // Re-center camera to dead-center
   const handleResetView = useCallback(() => {
     lunarSceneRef.current?.resetCamera();
+    lunarSceneRef.current?.clearCelestialMarkers();
+    setActiveHorizonState(null);
     setSelectedPOI(null);
+  }, []);
+
+  // Quick Orient Sun from Active HUD
+  const handleHUDOrientSun = useCallback(() => {
+    if (!activeHorizonState) return;
+    const ephemeris = calculateLunarHorizonEphemeris(new Date(), activeHorizonState.lat, activeHorizonState.lng);
+    const targetPitch = Math.max(-10, ephemeris.sun.altitudeDeg);
+    lunarSceneRef.current?.showCelestialMarkers(
+      activeHorizonState.lat,
+      activeHorizonState.lng,
+      ephemeris.sun.altitudeDeg,
+      ephemeris.sun.azimuthDeg,
+      ephemeris.earth.altitudeDeg,
+      ephemeris.earth.azimuthDeg
+    );
+    lunarSceneRef.current?.lookAtDirection(ephemeris.sun.azimuthDeg, targetPitch);
+    saveHorizonState({
+      lastAction: 'orient-sun',
+      lastActionTimestamp: Date.now(),
+      lastActionSummary: `Oriented at Sun (${ephemeris.sun.azimuthDeg}°, Alt ${ephemeris.sun.altitudeDeg}°) at ${activeHorizonState.siteName}`
+    });
+    setActiveHorizonState(prev => prev ? {
+      ...prev,
+      action: 'orient-sun',
+      headingDeg: ephemeris.sun.azimuthDeg,
+      pitchDeg: targetPitch,
+      sunAlt: ephemeris.sun.altitudeDeg,
+      sunAz: ephemeris.sun.azimuthDeg,
+      timestamp: Date.now()
+    } : null);
+  }, [activeHorizonState]);
+
+  // Quick Orient Earth from Active HUD
+  const handleHUDOrientEarth = useCallback(() => {
+    if (!activeHorizonState) return;
+    const ephemeris = calculateLunarHorizonEphemeris(new Date(), activeHorizonState.lat, activeHorizonState.lng);
+    const targetPitch = Math.max(-10, ephemeris.earth.altitudeDeg);
+    lunarSceneRef.current?.showCelestialMarkers(
+      activeHorizonState.lat,
+      activeHorizonState.lng,
+      ephemeris.sun.altitudeDeg,
+      ephemeris.sun.azimuthDeg,
+      ephemeris.earth.altitudeDeg,
+      ephemeris.earth.azimuthDeg
+    );
+    lunarSceneRef.current?.lookAtDirection(ephemeris.earth.azimuthDeg, targetPitch);
+    saveHorizonState({
+      lastAction: 'orient-earth',
+      lastActionTimestamp: Date.now(),
+      lastActionSummary: `Oriented at Earth (${ephemeris.earth.azimuthDeg}°, Alt ${ephemeris.earth.altitudeDeg}°) at ${activeHorizonState.siteName}`
+    });
+    setActiveHorizonState(prev => prev ? {
+      ...prev,
+      action: 'orient-earth',
+      headingDeg: ephemeris.earth.azimuthDeg,
+      pitchDeg: targetPitch,
+      earthAlt: ephemeris.earth.altitudeDeg,
+      earthAz: ephemeris.earth.azimuthDeg,
+      timestamp: Date.now()
+    } : null);
+  }, [activeHorizonState]);
+
+  // Exit Horizon Observation Mode from Active HUD
+  const handleHUDExit = useCallback(() => {
+    lunarSceneRef.current?.clearCelestialMarkers();
+    setActiveHorizonState(null);
   }, []);
 
   // Initial site selection if requested from landing page
@@ -324,7 +492,6 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
 
   // Elevation color touch filter handler for LOLA Topography
   const handleSelectElevationCategory = useCallback((category: ElevationCategory) => {
-    setBasemap('topographic');
     if (category === 'all') {
       setTerrainConfig(prev => ({
         ...prev,
@@ -356,7 +523,6 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
   }, []);
 
   const handleContinuousElevationChange = useCallback((elev: number | null) => {
-    setBasemap('topographic');
     setTerrainConfig(prev => ({
       ...prev,
       mode: 'elevation',
@@ -389,6 +555,27 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
     }
   }, []);
 
+  // Real-time Solar Cycle Simulation animation loop (~8°/s)
+  useEffect(() => {
+    if (!autoSunCycle) return;
+
+    let animId: number;
+    let lastTime = performance.now();
+
+    const loop = (time: number) => {
+      const dt = (time - lastTime) / 1000;
+      lastTime = time;
+      // Discard tick if user just moved the slider or clicked a preset within 150ms
+      if (performance.now() - lastUserActionTimestampRef.current >= 150) {
+        setSunAngle(prev => (prev + dt * 8) % 360);
+      }
+      animId = requestAnimationFrame(loop);
+    };
+
+    animId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animId);
+  }, [autoSunCycle]);
+
   const categoryCounts = {
     all: LUNAR_POIS.length,
     apollo: LUNAR_POIS.filter(p => p.category === 'apollo').length,
@@ -400,10 +587,11 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
 
   return (
     <div className="fixed inset-0 w-full h-full overflow-hidden bg-black text-slate-100 select-none">
-      {/* 3D WebGL Lunar Globe Canvas: Centered Fullscreen Viewport */}
-      <LunarScene
+      {/* CesiumJS High-Resolution Moon Globe: IAU lunar radius 1,737.4 km & NASA WMTS Streaming */}
+      <CesiumMoonGlobe
         ref={lunarSceneRef}
         basemap={basemap}
+        lrocConfig={lrocConfig}
         terrainConfig={terrainConfig}
         sunAngle={sunAngle}
         enableSunShade={enableSunShade}
@@ -415,24 +603,35 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
         activeCategory={activeCategory}
         pois={LUNAR_POIS}
         selectedPOI={selectedPOI}
+        targetCoordinate={clickedCoordinate ? { lat: clickedCoordinate.lat, lng: clickedCoordinate.lng, label: selectedPOI?.name } : null}
         onSelectPOI={handleSelectPOI}
-        onSunAngleChange={handleSunAngleChange}
         onHoverCoordinate={handleGlobeHoverCoordinate}
+        onHoverTelemetry={setQuickMapTelemetry}
+        onSelectNomenclature={setSelectedNomenclature}
         onHoverSitePin={handleHoverSitePin}
         onClickCoordinate={handleClickCoordinate}
-        isModalOpen={isSearchOpen || isHelpOpen}
-        customTexture={customTexture}
-        customBumpTexture={isBumpReliefEnabled ? nasaBumpTexture : null}
-        bumpScale={isBumpReliefEnabled ? 0.05 : 0}
-        mapLayerId={activeMapLayer}
+        onRightClickCoordinate={handleRightClickCoordinate}
+        isModalOpen={isSearchOpen || isHelpOpen || isComparatorOpen || isHorizonToolOpen || isMissionEvaluatorOpen || isLayerSwitcherOpen}
+        onTourStatusChange={(active, index) => {
+          setIsFlyoverTourActive(active);
+          setCurrentFlyoverIndex(index);
+        }}
       />
 
       {/* Top Header & Mission Category Filter */}
       <Header
         activeCategory={activeCategory}
         onCategoryChange={handleCategoryChange}
-        onOpenSearch={() => setIsSearchOpen(true)}
+        onOpenSearch={(initialQuery?: string) => {
+          setSearchModalInitialQuery(initialQuery || '');
+          setIsSearchOpen(true);
+        }}
         onOpenHelp={() => setIsHelpOpen(true)}
+        onOpenTutorial={() => {
+          setTutorialStartStep(1);
+          setIsTutorialOpen(true);
+        }}
+        onOpenLayers={() => setIsLayerSwitcherOpen(prev => !prev)}
         totalPOICount={LUNAR_POIS.length}
         filteredCount={LUNAR_POIS.filter(p => activeCategory === 'all' || p.category === activeCategory).length}
         showMarkers={showMarkers}
@@ -445,48 +644,71 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
         pois={LUNAR_POIS}
         onHoverSite={handleHoverSitePin}
         onSelectSite={handleSelectPOI}
+        onCopySiteCoordinates={handleCopyToastNotification}
         onBackToLanding={onBackToLanding}
+        sunAngle={sunAngle}
+        onSunAngleChange={handleSunAngleChange}
+        autoSunCycle={autoSunCycle}
+        onToggleAutoCycle={() => setAutoSunCycle(prev => !prev)}
+        enableSunShade={enableSunShade}
+        onToggleSunShade={() => setEnableSunShade(prev => !prev)}
       />
 
-      {/* Left Sidebar Stack: 1. MAP LAYER (WMTS)  2. BASEMAP & OVERLAYS  3. TERRAIN ANALYSIS & FILTERS */}
+      {/* Left Sidebar Stack (Figma 7-Card Hierarchy) */}
       <div
-        className={`absolute top-16 sm:top-20 left-3 sm:left-4 bottom-3 sm:bottom-4 z-20 w-72 sm:w-80 pointer-events-none transition-transform duration-300 ease-in-out ${
-          isLeftToolbarOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`absolute top-14 sm:top-16 left-3 sm:left-4 z-20 w-[316px] sm:w-[320px] pointer-events-none transition-transform duration-300 ease-in-out ${
+          isLeftToolbarOpen ? 'translate-x-0' : '-translate-x-[115%]'
         }`}
       >
-        {/* Scrollable Toolbars Stack */}
-        <div className="w-full h-full overflow-y-auto space-y-3 pb-4 pr-1.5 pointer-events-auto scrollbar-thin">
-          {/* Section 1: MAP LAYER (NASA WMTS / DEFAULT) */}
-          <div className="pointer-events-auto">
-            <MapLayerOverlay
-              activeLayer={activeMapLayer}
-              onSelectLayer={handleSelectMapLayer}
-              isLoading={isStitchingTiles}
-              progress={stitchProgress}
-              isBumpActive={isBumpReliefEnabled}
-              onToggleBump={() => setIsBumpReliefEnabled(prev => !prev)}
-              isLoadingBump={isStitchingBump}
-            />
+        {/* Toolbars Stack */}
+        <div className="w-full max-h-[calc(100vh-7.5rem)] overflow-y-auto space-y-2 pb-2 pr-1 pointer-events-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* Top Collapse Action: < LAYERS (Figma Reference) */}
+          <div className="flex items-center justify-between pb-0.5">
+            <button
+              id="tutorial-layers-toggle"
+              type="button"
+              onClick={() => setIsLeftToolbarOpen(false)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0B101A] border border-[#1D2C3F] hover:border-cyan-500/50 text-[#06B6D4] text-xs font-mono font-bold uppercase transition-all shadow-md group cursor-pointer"
+              title="Collapse Layers Sidebar"
+            >
+              <ChevronLeft className="w-3.5 h-3.5 text-[#06B6D4] transition-transform group-hover:-translate-x-0.5" />
+              <span>LAYERS</span>
+            </button>
           </div>
 
-          {/* Section 2: BASEMAP & OVERLAYS */}
-          <div className="pointer-events-auto">
+          {/* Card 1: BASEMAP & OVERLAYS */}
+          <div id="tutorial-card-basemap" className="pointer-events-auto">
             <LayerControl
               activeBasemap={basemap}
-              onBasemapChange={(newBasemap) => {
+              onBasemapChange={async (newBasemap) => {
                 setBasemap(newBasemap);
                 if (newBasemap === 'natural') {
+                  setCustomTexture(null);
+                  setActiveMapLayer('default');
                   setTerrainConfig(prev => ({ ...prev, mode: 'none' }));
-                } else if (newBasemap === 'topographic') {
-                  setTerrainConfig(prev => ({
-                    ...prev,
-                    mode: 'elevation',
-                    elevationCategory: prev.elevationCategory || 'all'
-                  }));
+                } else if (newBasemap === 'nasa-lola') {
+                  setActiveMapLayer('nasa-lola');
+                  setTerrainConfig(prev => ({ ...prev, mode: 'none' }));
+                  setIsStitchingTiles(true);
+                  setStitchProgress({ loaded: 0, total: 32 });
+                  try {
+                    const stitched = await fetchAndStitchNasaWmtsTiles('nasa-lola', (loaded, total) => {
+                      setStitchProgress({ loaded, total });
+                    });
+                    setCustomTexture(stitched);
+                  } catch (err) {
+                    console.error('[ExplorerDashboard] Error stitching NASA LOLA tiles:', err);
+                  } finally {
+                    setIsStitchingTiles(false);
+                  }
                 } else if (newBasemap === 'shaded-relief') {
+                  setCustomTexture(null);
+                  setActiveMapLayer('default');
                   setTerrainConfig(prev => ({ ...prev, mode: 'hillshade' }));
                 }
               }}
+              isLoadingTiles={isStitchingTiles}
+              tileProgress={stitchProgress}
               continuousTargetElev={terrainConfig.continuousTargetElev}
               onContinuousElevationChange={handleContinuousElevationChange}
               continuousWindowM={terrainConfig.continuousWindowM}
@@ -506,20 +728,16 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
               onToggleSunShade={() => setEnableSunShade(prev => !prev)}
               isBumpActive={isBumpReliefEnabled}
               onToggleBump={() => setIsBumpReliefEnabled(prev => !prev)}
-              onCollapseToSide={() => setIsLeftToolbarOpen(false)}
             />
           </div>
 
-          {/* Collapsible Section 2: TERRAIN ANALYSIS & FILTERS */}
-          <div className="pointer-events-auto">
+          {/* Card 2: TERRAIN ANALYSIS & FILTERS */}
+          <div id="tutorial-card-terrain" className="pointer-events-auto">
             <TerrainAnalysisControl
               config={terrainConfig}
               onChangeConfig={(newConfig) => {
                 setTerrainConfig(newConfig);
-                // Sync basemap active state if relevant
-                if (newConfig.mode === 'elevation') {
-                  setBasemap('topographic');
-                } else if (newConfig.mode === 'hillshade') {
+                if (newConfig.mode === 'hillshade') {
                   setBasemap('shaded-relief');
                 } else if (newConfig.mode === 'none') {
                   setBasemap('natural');
@@ -527,35 +745,162 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
               }}
             />
           </div>
-        </div>
 
-        {/* Small Toggle Button Showing Direction (Left < when open, Right > when collapsed) */}
+          {/* Card 3: LROC TILE LAYERS */}
+          <div id="tutorial-card-lroc" className="pointer-events-auto">
+            <div
+              onClick={() => setIsLayerSwitcherOpen(true)}
+              className="rounded-2xl bg-[#0B0F19]/95 border border-[#1E293B] hover:border-cyan-500/60 backdrop-blur-xl shadow-2xl p-2.5 sm:p-3 cursor-pointer transition-all hover:bg-cyan-950/20 group select-none"
+              title="Open LROC QuickMap Tile & WMTS Layer Switcher"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-[#083344] border border-[#06B6D4]/60 text-[#06B6D4] flex items-center justify-center shrink-0 shadow-md shadow-cyan-950/40 group-hover:scale-105 transition-transform">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-white group-hover:text-cyan-300 transition-colors">
+                      LROC Tile Layers
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-sans">
+                      WAC, LOLA Altimetry &amp; NAC Mosaics
+                    </p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-[#083344] text-[#22D3EE] border border-[#0E7490] group-hover:bg-cyan-900/50 transition-colors">
+                  LAYERS
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: LUNAR SITE COMPARATOR */}
+          <div id="tutorial-card-comparator" className="pointer-events-auto">
+            <div
+              onClick={() => setIsComparatorOpen(true)}
+              className="rounded-2xl bg-[#0B0F19]/95 border border-[#1E293B] hover:border-purple-500/60 backdrop-blur-xl shadow-2xl p-2.5 sm:p-3 cursor-pointer transition-all hover:bg-purple-950/20 group select-none"
+              title="Launch Lunar Site Comparator Tool"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-[#2E1065] border border-[#A855F7]/60 text-[#A855F7] flex items-center justify-center shrink-0 shadow-md shadow-purple-950/40 group-hover:scale-105 transition-transform">
+                    <GitCompare className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-white group-hover:text-purple-300 transition-colors">
+                      Lunar Site Comparator
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-sans">
+                      Dual Location Exploration Analysis
+                    </p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-[#2E1065] text-[#D8B4FE] border border-[#7E22CE] group-hover:bg-purple-900/50 transition-colors">
+                  COMPARE
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 5: CELESTIAL HORIZON */}
+          <div id="tutorial-card-horizon" className="pointer-events-auto">
+            <div
+              onClick={() => setIsHorizonToolOpen(true)}
+              className="rounded-2xl bg-[#0B0F19]/95 border border-[#1E293B] hover:border-amber-500/60 backdrop-blur-xl shadow-2xl p-2.5 sm:p-3 cursor-pointer transition-all hover:bg-amber-950/20 group select-none"
+              title="Launch Lunar Celestial Horizon & Ephemeris Observer"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-[#451A03] border border-[#F59E0B]/60 text-[#F59E0B] flex items-center justify-center shrink-0 shadow-md shadow-amber-950/40 group-hover:scale-105 transition-transform">
+                    <Compass className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-white group-hover:text-amber-300 transition-colors">
+                      Celestial Horizon
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-sans">
+                      Sun &amp; Earth Relative to Horizon
+                    </p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-[#451A03] text-[#FCD34D] border border-[#B45309] group-hover:bg-amber-900/50 transition-colors">
+                  HORIZON
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 6: MISSION EVALUATOR */}
+          <div id="tutorial-card-evaluator" className="pointer-events-auto">
+            <div
+              onClick={() => setIsMissionEvaluatorOpen(true)}
+              className="rounded-2xl bg-[#0B0F19]/95 border border-[#1E293B] hover:border-blue-500/60 backdrop-blur-xl shadow-2xl p-2.5 sm:p-3 cursor-pointer transition-all hover:bg-blue-950/20 group select-none"
+              title="Launch NASA/JPL Horizons Lunar Mission Feasibility Evaluator"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-[#172554] border border-[#3B82F6]/60 text-[#3B82F6] flex items-center justify-center shrink-0 shadow-md shadow-blue-950/40 group-hover:scale-105 transition-transform">
+                    <Rocket className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-white group-hover:text-blue-300 transition-colors">
+                      Mission Evaluator
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-sans">
+                      JPL Solar &amp; Comms Feasibility
+                    </p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-[#172554] text-[#93C5FD] border border-[#1D4ED8] group-hover:bg-blue-900/50 transition-colors">
+                  FEASIBILITY
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 7: 3D FLYOVER & TOURS (Bottom card in Figma design) */}
+          <div id="tutorial-card-flyover" className="pointer-events-auto">
+            <LunarFlyoverControl
+              onFlyToLandmark={(landmark) => {
+                lunarSceneRef.current?.flyTo(
+                  landmark.lat,
+                  landmark.lng,
+                  landmark.altitudeMeters,
+                  landmark.headingDeg,
+                  landmark.pitchDeg,
+                  landmark.durationSeconds || 5
+                );
+              }}
+              onStartTour={() => {
+                lunarSceneRef.current?.startFlyoverTour((idx) => {
+                  setCurrentFlyoverIndex(idx);
+                });
+                setIsFlyoverTourActive(true);
+              }}
+              onStopTour={() => {
+                lunarSceneRef.current?.stopFlyoverTour();
+                setIsFlyoverTourActive(false);
+              }}
+              isTourActive={isFlyoverTourActive}
+              currentWaypointIndex={currentFlyoverIndex}
+              onResetOverview={handleResetView}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Re-expand Sidebar Floating Pill (when collapsed) */}
+      {!isLeftToolbarOpen && (
         <button
           type="button"
-          onClick={() => setIsLeftToolbarOpen(prev => !prev)}
-          className="pointer-events-auto absolute top-1 left-full ml-2 p-2 sm:p-2.5 rounded-xl bg-space-900/95 border border-slate-800/90 hover:border-cyan-500/60 hover:bg-cyan-950/80 text-cyan-400 hover:text-white shadow-2xl backdrop-blur-xl transition-all duration-200 flex items-center gap-1.5 group cursor-pointer"
-          title={isLeftToolbarOpen ? "Hide left toolbar to side (or press '[')" : "Show left toolbar (or press '[')"}
-          aria-label={isLeftToolbarOpen ? "Collapse left toolbar" : "Expand left toolbar"}
+          onClick={() => setIsLeftToolbarOpen(true)}
+          className="pointer-events-auto absolute top-16 left-3 p-2 px-3 rounded-xl bg-[#0B101A]/95 border border-[#1D2C3F] hover:border-cyan-500/60 text-[#06B6D4] text-xs font-mono font-bold uppercase shadow-2xl backdrop-blur-xl transition-all flex items-center gap-1.5 group cursor-pointer z-20"
+          title="Expand Layers Sidebar"
         >
-          {isLeftToolbarOpen ? (
-            <>
-              <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
-              <span className="sr-only">Hide Toolbar</span>
-            </>
-          ) : (
-            <>
-              <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-              {isStitchingTiles ? (
-                <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
-              ) : (
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-300 pr-1 hidden sm:inline">
-                  Layers
-                </span>
-              )}
-            </>
-          )}
+          <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+          <span>LAYERS</span>
         </button>
-      </div>
+      )}
 
       {/* User Option Floating Prompt: Ask if they want mission tags */}
       {showPinsPrompt && !showMarkers && (
@@ -588,37 +933,45 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
         </div>
       )}
 
-      {/* Solar Phase & Lighting Simulator (Top-Right) */}
-      <SolarPhaseControl
-        className={`absolute top-16 sm:top-20 z-20 w-72 sm:w-80 transition-all duration-300 ${selectedPOI ? 'right-3 sm:right-[31.5rem] hidden lg:block' : 'right-3 sm:right-4'
-          }`}
-        sunAngle={sunAngle}
-        onSunAngleChange={handleSunAngleChange}
-        autoCycle={autoSunCycle}
-        onToggleAutoCycle={() => setAutoSunCycle(prev => !prev)}
-        enableSunShade={enableSunShade}
-        onToggleSunShade={() => setEnableSunShade(prev => !prev)}
-      />
-
-      {/* Shared Right-Side Stack: POI Details Panel (top) + Coordinate Overlay (bottom) */}
-      <aside className="absolute top-16 sm:top-20 right-3 sm:right-4 bottom-3 sm:bottom-4 z-20 pointer-events-none flex flex-col justify-end gap-2.5 sm:gap-3 w-[calc(100vw-1.5rem)] sm:w-[480px] max-w-full">
+      {/* Shared Right-Side Stack: POI Details Panel */}
+      <aside className="absolute top-16 sm:top-20 right-3 sm:right-4 bottom-14 sm:bottom-16 z-20 pointer-events-none flex flex-col justify-end gap-2.5 sm:gap-3 w-[calc(100vw-1.5rem)] sm:w-[480px] max-w-full">
         {/* Slide-out Landing Site Details Card (takes remaining space, scrolls internally) */}
         <POIInfoPanel
           poi={selectedPOI}
           onClose={() => setSelectedPOI(null)}
           onFocusSite={handleFocusSite}
-        />
-
-        {/* Real-Time Raycasting Coordinate HUD (anchored at bottom of stack) */}
-        <CoordinateOverlay
-          hoverCoordinate={hoverCoordinate}
-          clickedCoordinate={clickedCoordinate}
-          selectedPOIName={selectedPOI?.name}
-          onResetView={handleResetView}
-          onZoomIn={() => lunarSceneRef.current?.zoomIn()}
-          onZoomOut={() => lunarSceneRef.current?.zoomOut()}
+          onCopyCoordinates={handleCopyToastNotification}
         />
       </aside>
+
+      {/* LROC QuickMap Selenographic Telemetry Bar & Go to Coordinates HUD */}
+      <QuickMapBottomBar
+        telemetry={quickMapTelemetry}
+        onGoToCoordinates={(lat, lng, altitudeMeters) => {
+          lunarSceneRef.current?.flyToCoordinates(lat, lng, altitudeMeters || 48000);
+        }}
+        onCenterMoon={handleResetView}
+      />
+
+      {/* LROC QuickMap Layer Switcher Panel */}
+      <LROCLayerSwitcher
+        isOpen={isLayerSwitcherOpen}
+        onClose={() => setIsLayerSwitcherOpen(false)}
+        config={lrocConfig}
+        onChangeConfig={setLrocConfig}
+        onFlyToNacTarget={(lat, lng, altitude) => {
+          lunarSceneRef.current?.flyTo(lat, lng, altitude || 20000, 45, -35, 3.5);
+        }}
+      />
+
+      {/* USGS Crater & Landing Site Nomenclature Inspector Modal */}
+      <USGSNomenclatureModal
+        feature={selectedNomenclature}
+        onClose={() => setSelectedNomenclature(null)}
+        onFlyToFeature={(lat, lng, altitude) => {
+          lunarSceneRef.current?.flyTo(lat, lng, altitude || 30000, 45, -35, 3.5);
+        }}
+      />
 
       {/* Quick Search Modal & Coordinate Navigation Tool */}
       <POISearchModal
@@ -627,12 +980,107 @@ export function ExplorerDashboard({ onBackToLanding, initialSiteId }: ExplorerDa
         pois={LUNAR_POIS}
         onSelectPOI={handleSelectPOI}
         onNavigateCoordinate={handleNavigateCoordinate}
+        initialQuery={searchModalInitialQuery}
       />
 
       {/* Atlas User Guide & Scientific Calibration Modal */}
       <HelpGuideModal
         isOpen={isHelpOpen}
         onClose={() => setIsHelpOpen(false)}
+      />
+
+      {/* Lunar Site Comparator Centred Modal Popup */}
+      <LunarSiteComparatorModal
+        isOpen={isComparatorOpen}
+        onClose={() => setIsComparatorOpen(false)}
+      />
+
+      {/* Active Horizon Observation Floating HUD Pill */}
+      <HorizonObserverActiveHUD
+        state={activeHorizonState}
+        onReopenModal={() => setIsHorizonToolOpen(true)}
+        onOrientSun={handleHUDOrientSun}
+        onOrientEarth={handleHUDOrientEarth}
+        onExit={handleHUDExit}
+      />
+
+      {/* Lunar Celestial Horizon & Ephemeris Observer Modal */}
+      <LunarHorizonObserverModal
+        isOpen={isHorizonToolOpen}
+        onClose={() => {
+          setIsHorizonToolOpen(false);
+          // Keep 3D celestial markers rendered so the user can continue viewing them
+        }}
+        onActionTriggered={(payload) => {
+          setActiveHorizonState(payload);
+        }}
+        onFlyToHorizon={(lat, lng, headingDeg, pitchDeg, altitudeMeters) => {
+          lunarSceneRef.current?.flyToSurfaceHorizon(lat, lng, headingDeg, pitchDeg, altitudeMeters);
+        }}
+        onLookAtDirection={(headingDeg, pitchDeg) => {
+          lunarSceneRef.current?.lookAtDirection(headingDeg, pitchDeg);
+        }}
+        onSetSimulationDate={(date) => {
+          lunarSceneRef.current?.setSimulationDate(date);
+        }}
+        onShowCelestialMarkers={(siteLat, siteLng, sunAlt, sunAz, earthAlt, earthAz) => {
+          lunarSceneRef.current?.showCelestialMarkers(siteLat, siteLng, sunAlt, sunAz, earthAlt, earthAz);
+        }}
+        currentHoverCoord={hoverCoordinate}
+      />
+
+      {/* NASA/JPL Lunar Mission Feasibility Evaluator Modal */}
+      <LunarMissionEvaluatorModal
+        isOpen={isMissionEvaluatorOpen}
+        onClose={() => setIsMissionEvaluatorOpen(false)}
+        onFlyToSite={(lat, lng, altitudeMeters) => {
+          lunarSceneRef.current?.flyTo(lat, lng, altitudeMeters || 200000);
+        }}
+        onSetSimulationDate={(date) => {
+          lunarSceneRef.current?.setSimulationDate(date);
+        }}
+        currentHoverCoord={hoverCoordinate}
+      />
+
+      {/* Right-Click Selenographic Coordinate Context Menu */}
+      <CoordinateContextMenu
+        isOpen={contextMenu.isOpen}
+        x={contextMenu.x}
+        y={contextMenu.y}
+        lat={contextMenu.lat}
+        lng={contextMenu.lng}
+        siteName={contextMenu.siteName}
+        elevationMeters={contextMenu.elevationMeters}
+        onClose={() => setContextMenu(prev => ({ ...prev, isOpen: false }))}
+        onFlyTo={(lat, lng) => {
+          lunarSceneRef.current?.flyToCoordinates(lat, lng, 48000);
+        }}
+        onEvaluateMission={(lat, lng, siteName) => {
+          setHoverCoordinate({
+            lat,
+            lng,
+            elevationMeters: contextMenu.elevationMeters || 0,
+            slopeDeg: 4.0,
+            roughnessM: 30.0,
+            terrainClass: 'Target Site',
+            siteName: siteName || 'Target Site'
+          });
+          setIsMissionEvaluatorOpen(true);
+        }}
+      />
+
+      {/* Floating Clipboard Copy Notification Toast */}
+      <CoordinateCopyToast
+        toast={copyToast}
+        onDismiss={() => setCopyToast(null)}
+      />
+
+      {/* Interactive Website Tutorial / Guided User Tour */}
+      <WebsiteTutorial
+        isOpen={isTutorialOpen}
+        onClose={() => setIsTutorialOpen(false)}
+        onOpenSidebar={() => setIsLeftToolbarOpen(true)}
+        initialStepIndex={tutorialStartStep}
       />
     </div>
   );

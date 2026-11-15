@@ -115,14 +115,7 @@ export const HelpGuideModal: React.FC<HelpGuideModalProps> = ({ isOpen, onClose 
               </div>
 
               <div className="p-3 rounded-xl bg-space-950/60 border border-slate-800/80">
-                <span className="font-bold text-white block mb-0.5">2. Topographic / LOLA Elevation</span>
-                <p className="text-slate-400 text-[11px] font-sans leading-relaxed">
-                  Hypsometric false-color elevation mapping derived from the Lunar Orbiter Laser Altimeter. Illustrates the deep South Pole-Aitken basin (-9 km, violet/blue) up to elevated far-side mountain massifs (+10.7 km, orange/white).
-                </p>
-              </div>
-
-              <div className="p-3 rounded-xl bg-space-950/60 border border-slate-800/80">
-                <span className="font-bold text-white block mb-0.5">3. LOLA Shaded Relief / Hillshade</span>
+                <span className="font-bold text-white block mb-0.5">2. LOLA Shaded Relief / Hillshade</span>
                 <p className="text-slate-400 text-[11px] font-sans leading-relaxed">
                   Monochrome directional illumination emphasizing fine structural geology: crater terraces, volcanic rilles, central peaks, and fault scarps.
                 </p>

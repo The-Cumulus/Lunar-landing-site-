@@ -32,24 +32,12 @@ interface TerrainAnalysisControlProps {
   datasetStatus?: { isLoaded: boolean; error: string | null };
 }
 
-// Reusable ticker component for running words from right to left
-const RunningText: React.FC<{ text: string }> = ({ text }) => {
-  return (
-    <div className="overflow-hidden whitespace-nowrap flex-1 min-w-0 relative">
-      <div className="inline-flex animate-running-words">
-        <span className="pr-6 inline-block">{text}</span>
-        <span className="pr-6 inline-block" aria-hidden="true">{text}</span>
-      </div>
-    </div>
-  );
-};
-
 export const TerrainAnalysisControl: React.FC<TerrainAnalysisControlProps> = ({
   config,
   onChangeConfig,
   datasetStatus
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const updateConfig = (partial: Partial<TerrainFilterConfig>) => {
     onChangeConfig({ ...config, ...partial });
@@ -62,19 +50,21 @@ export const TerrainAnalysisControl: React.FC<TerrainAnalysisControlProps> = ({
   const activePalette = TERRAIN_PALETTES.find(p => p.id === config.paletteId) || TERRAIN_PALETTES[0];
 
   return (
-    <div className="rounded-2xl bg-space-900/90 border border-slate-800/90 backdrop-blur-xl shadow-2xl overflow-hidden transition-all duration-300 pointer-events-auto">
+    <div className="rounded-2xl bg-[#0B0F19]/95 border border-[#1E293B] hover:border-emerald-500/50 backdrop-blur-xl shadow-2xl overflow-hidden transition-all duration-300 pointer-events-auto">
       {/* Panel Header */}
       <div
         onClick={() => setIsExpanded(!isExpanded)}
-        className="p-3.5 flex items-center justify-between cursor-pointer border-b border-slate-800/60 hover:bg-slate-800/30 transition-colors"
+        className={`p-2.5 sm:p-3 flex items-center justify-between cursor-pointer hover:bg-slate-800/30 transition-colors select-none ${
+          isExpanded ? 'border-b border-slate-800/60' : ''
+        }`}
       >
         <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-lg bg-emerald-950/80 border border-emerald-700/50 text-emerald-400">
+          <div className="w-9 h-9 rounded-xl bg-[#064E3B]/70 border border-[#10B981]/60 text-[#10B981] flex items-center justify-center shrink-0 shadow-md shadow-emerald-950/40">
             <Activity className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-slate-200">
+              <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-white">
                 Terrain Analysis & Filters
               </h3>
               {config.mode !== 'none' && (
@@ -83,12 +73,8 @@ export const TerrainAnalysisControl: React.FC<TerrainAnalysisControlProps> = ({
                 </span>
               )}
             </div>
-            <p className="text-[10px] text-slate-400 font-mono">
-              {config.mode === 'none' && 'Scientific LOLA Geodesy Suite'}
-              {config.mode === 'elevation' && 'LOLA DEM Hypsometric Elevation'}
-              {config.mode === 'slope' && 'Spatial Gradient Slope (Degrees)'}
-              {config.mode === 'roughness' && 'RMS Surface Roughness Dispersion'}
-              {config.mode === 'hillshade' && 'Directional Analytical Hillshade'}
+            <p className="text-[10px] text-slate-400 font-sans">
+              Scientific LOLA Geodesy Suite
             </p>
           </div>
         </div>
@@ -128,50 +114,50 @@ export const TerrainAnalysisControl: React.FC<TerrainAnalysisControlProps> = ({
 
               <button
                 onClick={() => setMode('elevation')}
-                title="Elevation (LOLA)"
-                className={`px-2 py-2 rounded-xl text-xs font-mono border transition-all flex items-center gap-1.5 overflow-hidden text-left ${config.mode === 'elevation'
+                title="Elevation (LOLA DEM)"
+                className={`px-2 py-2 rounded-xl text-xs font-mono border transition-all flex items-center gap-1.5 text-left ${config.mode === 'elevation'
                     ? 'bg-emerald-950/60 border-emerald-500/70 text-emerald-300 font-bold shadow-md shadow-emerald-950/60'
                     : 'bg-space-950/50 border-slate-800 text-slate-300 hover:border-slate-700'
                   }`}
               >
                 <Mountain className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <RunningText text="Elevation (LOLA)" />
+                <span className="truncate">Elevation</span>
               </button>
 
               <button
                 onClick={() => setMode('slope')}
                 title="Slope (Degrees)"
-                className={`px-2 py-2 rounded-xl text-xs font-mono border transition-all flex items-center gap-1.5 overflow-hidden text-left ${config.mode === 'slope'
+                className={`px-2 py-2 rounded-xl text-xs font-mono border transition-all flex items-center gap-1.5 text-left ${config.mode === 'slope'
                     ? 'bg-cyan-950/60 border-cyan-500/70 text-cyan-300 font-bold shadow-md shadow-cyan-950/60'
                     : 'bg-space-950/50 border-slate-800 text-slate-300 hover:border-slate-700'
                   }`}
               >
                 <TrendingUp className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <RunningText text="Slope (Degrees)" />
+                <span className="truncate">Slope (Deg)</span>
               </button>
 
               <button
                 onClick={() => setMode('roughness')}
                 title="Surface Roughness"
-                className={`px-2 py-2 rounded-xl text-xs font-mono border transition-all flex items-center gap-1.5 overflow-hidden text-left ${config.mode === 'roughness'
+                className={`px-2 py-2 rounded-xl text-xs font-mono border transition-all flex items-center gap-1.5 text-left ${config.mode === 'roughness'
                     ? 'bg-amber-950/60 border-amber-500/70 text-amber-300 font-bold shadow-md shadow-amber-950/60'
                     : 'bg-space-950/50 border-slate-800 text-slate-300 hover:border-slate-700'
                   }`}
               >
                 <Sliders className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <RunningText text="Surface Roughness" />
+                <span className="truncate">Roughness</span>
               </button>
 
               <button
                 onClick={() => setMode('hillshade')}
                 title="Hillshade Relief"
-                className={`px-2 py-2 rounded-xl text-xs font-mono border transition-all flex items-center gap-1.5 overflow-hidden text-left ${config.mode === 'hillshade'
+                className={`px-2 py-2 rounded-xl text-xs font-mono border transition-all flex items-center gap-1.5 text-left ${config.mode === 'hillshade'
                     ? 'bg-purple-950/60 border-purple-500/70 text-purple-300 font-bold shadow-md shadow-purple-950/60'
                     : 'bg-space-950/50 border-slate-800 text-slate-300 hover:border-slate-700'
                   }`}
               >
                 <Sun className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                <RunningText text="Hillshade Relief" />
+                <span className="truncate">Hillshade</span>
               </button>
             </div>
           </div>
@@ -360,6 +346,21 @@ export const TerrainAnalysisControl: React.FC<TerrainAnalysisControlProps> = ({
                   );
                 })}
               </div>
+
+              {/* Dynamic Surface Roughness Legend */}
+              <div className="p-2.5 rounded-xl bg-space-950/80 border border-slate-800/80 space-y-1.5">
+                <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 font-semibold">
+                  <span>0 m (Planar Basalt)</span>
+                  <span>50 m RMS</span>
+                  <span>&gt; 90 m (Rugged Massifs)</span>
+                </div>
+                <div
+                  className="w-full h-2.5 rounded-full border border-slate-700"
+                  style={{
+                    background: 'linear-gradient(to right, #10b981 0%, #f59e0b 50%, #ec4899 100%)'
+                  }}
+                />
+              </div>
             </div>
           )}
 
@@ -426,6 +427,21 @@ export const TerrainAnalysisControl: React.FC<TerrainAnalysisControlProps> = ({
                   <span>45° (Standard)</span>
                   <span>80° (High Noon)</span>
                 </div>
+              </div>
+
+              {/* Dynamic Analytical Hillshade Legend */}
+              <div className="p-2.5 rounded-xl bg-space-950/80 border border-slate-800/80 space-y-1.5">
+                <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 font-semibold">
+                  <span>Cast Shadows (0)</span>
+                  <span>Midtones (128)</span>
+                  <span>Illuminated Ridges (255)</span>
+                </div>
+                <div
+                  className="w-full h-2.5 rounded-full border border-slate-700"
+                  style={{
+                    background: 'linear-gradient(to right, #000000 0%, #6b7280 50%, #f3f4f6 100%)'
+                  }}
+                />
               </div>
             </div>
           )}
